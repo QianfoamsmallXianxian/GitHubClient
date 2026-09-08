@@ -1,3 +1,4 @@
+import androidx.compose.foundation.layout.Row
 package com.githubclient.app.ui.screens.automation
 
 import androidx.compose.foundation.layout.Column
