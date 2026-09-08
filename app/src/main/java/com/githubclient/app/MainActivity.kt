@@ -75,8 +75,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        val uri: Uri? = intent?.data ?: return
-        if (uri.scheme == "githubclient" && uri.host == "oauth") {
+        val uri: Uri? = intent?.data
+        if (uri != null && uri.scheme == "githubclient" && uri.host == "oauth") {
             lifecycleScope.launch {
                 oauthManager.handleCallback(uri)
             }
