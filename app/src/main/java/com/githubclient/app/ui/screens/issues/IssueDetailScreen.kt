@@ -1,4 +1,5 @@
 package com.githubclient.app.ui.screens.issues
+import androidx.compose.foundation.layout.Row
 import com.githubclient.app.data.model.Issue
 
 import androidx.compose.foundation.layout.Column
