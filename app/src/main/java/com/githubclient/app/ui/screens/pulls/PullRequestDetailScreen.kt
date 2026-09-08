@@ -1,3 +1,4 @@
+import com.githubclient.app.data.model.PullRequest
 package com.githubclient.app.ui.screens.pulls
 
 import androidx.compose.foundation.layout.Arrangement
