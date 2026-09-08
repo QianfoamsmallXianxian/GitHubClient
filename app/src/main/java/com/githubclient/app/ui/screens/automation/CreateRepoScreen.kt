@@ -1,7 +1,7 @@
-import androidx.compose.foundation.layout.Row
 package com.githubclient.app.ui.screens.automation
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
