@@ -1,5 +1,5 @@
-import com.githubclient.app.data.model.Issue
 package com.githubclient.app.ui.screens.issues
+import com.githubclient.app.data.model.Issue
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
