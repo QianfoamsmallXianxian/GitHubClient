@@ -55,18 +55,23 @@ class ToolchainManager @Inject constructor(
         "Rust" to "https://static.rust-lang.org/dist/rust-1.82.0-${arch}-unknown-linux-gnu.tar.gz"
     )
 
+    fun toolDir(toolName: String): File =
+        File(rootDir, toolName.lowercase().replace(" ", "_"))
+
+    fun isToolInstalled(toolName: String): Boolean {
+        val dir = toolDir(toolName)
+        return dir.exists() && dir.listFiles()?.any { it.exists() } == true
+    }
+
     suspend fun detectAll(): List<ToolchainItemEntity> = withContext(Dispatchers.IO) {
         val tools = toolDownloadUrls().map { (name, url) ->
             val existing = toolchainDao.getByName(name)
-            val installedDir = File(rootDir, name.lowercase().replace(" ", "_"))
-            val isInstalled = existing?.status == ToolStatus.INSTALLED.name ||
-                (installedDir.exists() && installedDir.listFiles()?.isNotEmpty() == true)
-
+            val installed = isToolInstalled(name)
             ToolchainItemEntity(
                 toolName = name,
                 version = existing?.version,
-                path = if (isInstalled) installedDir.absolutePath else existing?.path,
-                status = if (isInstalled) ToolStatus.INSTALLED.name else ToolStatus.NOT_INSTALLED.name,
+                path = if (installed) toolDir(name).absolutePath else existing?.path,
+                status = if (installed) ToolStatus.INSTALLED.name else ToolStatus.NOT_INSTALLED.name,
                 downloadUrl = url,
                 checksum = existing?.checksum,
                 updatedAt = System.currentTimeMillis()
@@ -79,11 +84,10 @@ class ToolchainManager @Inject constructor(
     suspend fun downloadAndInstall(toolName: String): Long {
         val url = toolDownloadUrls()[toolName]
             ?: throw IllegalArgumentException("未提供 $toolName 的下载地址")
-        val destDir = File(rootDir, toolName.lowercase().replace(" ", "_"))
+        val destDir = toolDir(toolName)
         destDir.mkdirs()
         val archiveFile = File(destDir, "archive_${System.currentTimeMillis()}")
 
-        // 更新工具状态为 DOWNLOADING，UI 会立即显示进度
         toolchainDao.upsert(
             ToolchainItemEntity(
                 toolName = toolName,
@@ -113,13 +117,11 @@ class ToolchainManager @Inject constructor(
                 val request = Request.Builder().url(url).build()
                 okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
-                        toolchainDao.upsert(ToolchainItemEntity(toolName, null, destDir.absolutePath, ToolStatus.FAILED.name, url, null, System.currentTimeMillis()))
-                        downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
+                        markFailed(toolName, destDir, url, taskId)
                         return@use
                     }
                     val body = response.body ?: run {
-                        toolchainDao.upsert(ToolchainItemEntity(toolName, null, destDir.absolutePath, ToolStatus.FAILED.name, url, null, System.currentTimeMillis()))
-                        downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
+                        markFailed(toolName, destDir, url, taskId)
                         return@use
                     }
                     val total = body.contentLength()
@@ -138,27 +140,45 @@ class ToolchainManager @Inject constructor(
                         }
                     }
                     extractArchive(archiveFile, destDir)
-                    downloadTaskDao.updateProgress(taskId, downloaded, ToolStatus.INSTALLED.name)
-                    toolchainDao.upsert(
-                        ToolchainItemEntity(
-                            toolName = toolName,
-                            version = null,
-                            path = destDir.absolutePath,
-                            status = ToolStatus.INSTALLED.name,
-                            downloadUrl = url,
-                            checksum = null,
-                            updatedAt = System.currentTimeMillis()
+                    if (isToolInstalled(toolName)) {
+                        downloadTaskDao.updateProgress(taskId, downloaded, ToolStatus.INSTALLED.name)
+                        toolchainDao.upsert(
+                            ToolchainItemEntity(
+                                toolName = toolName,
+                                version = null,
+                                path = destDir.absolutePath,
+                                status = ToolStatus.INSTALLED.name,
+                                downloadUrl = url,
+                                checksum = null,
+                                updatedAt = System.currentTimeMillis()
+                            )
                         )
-                    )
+                    } else {
+                        markFailed(toolName, destDir, url, taskId)
+                    }
                     archiveFile.delete()
                 }
             } catch (e: Exception) {
-                toolchainDao.upsert(ToolchainItemEntity(toolName, null, destDir.absolutePath, ToolStatus.FAILED.name, url, null, System.currentTimeMillis()))
-                downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
+                markFailed(toolName, destDir, url, taskId)
                 archiveFile.delete()
             }
         }
         return taskId
+    }
+
+    private suspend fun markFailed(toolName: String, destDir: File, url: String, taskId: Long) {
+        toolchainDao.upsert(
+            ToolchainItemEntity(
+                toolName = toolName,
+                version = null,
+                path = destDir.absolutePath,
+                status = ToolStatus.FAILED.name,
+                downloadUrl = url,
+                checksum = null,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
     }
 
     private fun extractArchive(archive: File, destDir: File) {
