@@ -61,6 +61,18 @@ class ActionsViewModel @Inject constructor(
         }
     }
 
+    fun deleteRun(owner: String, name: String, runId: Long) {
+        viewModelScope.launch {
+            try {
+                repository.deleteRun(owner, name, runId)
+                _message.value = "已删除 Run #$runId"
+                load(owner, name)
+            } catch (e: Exception) {
+                _message.value = e.message ?: "删除失败"
+            }
+        }
+    }
+
     fun clearMessage() {
         _message.value = null
     }
