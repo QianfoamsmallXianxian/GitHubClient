@@ -169,6 +169,7 @@ fun AppNavHost() {
                 onOpenIssues = { navController.navigate(Routes.issues(owner, name)) },
                 onOpenPulls = { navController.navigate(Routes.pulls(owner, name)) },
                 onOpenReleases = { navController.navigate(Routes.releases(owner, name)) }
+                onDeleted = { navController.popBackStack() },
             )
         }
         composable(
