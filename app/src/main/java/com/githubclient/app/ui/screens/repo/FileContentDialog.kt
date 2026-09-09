@@ -10,7 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +55,7 @@ fun FileContentDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.AutoMirrored.Filled.Description,
+                        Icons.Default.InsertDriveFile,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
