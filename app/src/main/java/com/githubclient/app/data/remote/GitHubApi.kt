@@ -171,6 +171,13 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
 
+    @DELETE("repos/{owner}/{repo}")
+    suspend fun deleteRepository(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    )
+
     @POST("user/repos")
     suspend fun createRepository(
         @Body body: CreateRepoRequest,
