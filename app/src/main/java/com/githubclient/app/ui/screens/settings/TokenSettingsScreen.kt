@@ -22,10 +22,12 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.githubclient.app.data.auth.GitHubAccount
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +62,8 @@ fun TokenSettingsScreen(
 ) {
     val accounts by viewModel.accounts.collectAsState()
     val activeLogin by viewModel.activeLogin.collectAsState()
+    val isFetchingToken by viewModel.isFetchingToken.collectAsState()
+    val message by viewModel.message.collectAsState()
     var showTokenDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var selectedAccount by remember { mutableStateOf<GitHubAccount?>(null) }
@@ -66,7 +71,7 @@ fun TokenSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("设置") },
+                title = { Text("账号信息") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 },
@@ -82,7 +87,7 @@ fun TokenSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Text("账号信息", style = MaterialTheme.typography.titleMedium)
+                Text("账号列表", style = MaterialTheme.typography.titleMedium)
             }
 
             items(accounts, key = { it.login }) { account ->
@@ -102,17 +107,42 @@ fun TokenSettingsScreen(
 
             item {
                 Button(
+                    onClick = { viewModel.startOAuthTokenFetch() },
+                    enabled = !isFetchingToken,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isFetchingToken) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Sync, contentDescription = null)
+                    }
+                    Text(if (isFetchingToken) "正在获取..." else "一键获取最新 Token")
+                }
+            }
+
+            item {
+                Button(
                     onClick = { showTokenDialog = true },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Key, contentDescription = null)
-                    Text("获取 / 更新 Token")
+                    Text("手动粘贴 Token")
+                }
+            }
+
+            message?.let {
+                item {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
             item {
                 Text(
-                    "Token 获取方法：\n1. 打开 GitHub → Settings → Developer settings → Personal access tokens\n2. 选择 Tokens (classic) 或 Fine-grained tokens\n3. 勾选 repo 和 workflow 权限\n4. 生成后复制粘贴到上面的输入框",
+                    "Token 获取方法：\n1. 一键获取：通过 GitHub OAuth 授权自动获取最新 Token\n2. 手动获取：打开 GitHub → Settings → Developer settings → Personal access tokens，勾选 repo 和 workflow 权限后复制粘贴",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -134,8 +164,8 @@ fun TokenSettingsScreen(
         EditAccountDialog(
             account = selectedAccount!!,
             onDismiss = { showEditDialog = false },
-            onSave = { nickname, avatarUri ->
-                viewModel.updateAccount(selectedAccount!!.login, nickname, avatarUri)
+            onSave = { nickname, avatarPath ->
+                viewModel.updateAccount(selectedAccount!!.login, nickname, avatarPath)
                 showEditDialog = false
             }
         )
@@ -241,10 +271,22 @@ private fun EditAccountDialog(
 ) {
     val context = LocalContext.current
     var nickname by remember { mutableStateOf(account.nickname ?: "") }
-    var avatarUri by remember { mutableStateOf<String?>(null) }
+    var avatarPath by remember { mutableStateOf(account.avatarUrl) }
 
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        avatarUri = uri?.toString()
+        if (uri != null) {
+            runCatching {
+                val input = context.contentResolver.openInputStream(uri)
+                if (input != null) {
+                    val dir = File(context.filesDir, "avatars")
+                    dir.mkdirs()
+                    val file = File(dir, "${account.login}.jpg")
+                    file.outputStream().use { output -> input.copyTo(output) }
+                    input.close()
+                    avatarPath = file.absolutePath
+                }
+            }
+        }
     }
 
     AlertDialog(
@@ -268,12 +310,12 @@ private fun EditAccountDialog(
                     onClick = { avatarPicker.launch("image/*") },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (avatarUri == null) "选择自定义头像" else "已选择头像")
+                    Text(if (avatarPath == null) "选择自定义头像" else "已选择头像（重新选择可更换）")
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(nickname.trim(), avatarUri) }) { Text("保存") }
+            TextButton(onClick = { onSave(nickname.trim(), avatarPath) }) { Text("保存") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
