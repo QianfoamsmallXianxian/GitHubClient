@@ -12,7 +12,7 @@ class GitHubWriteRepository @Inject constructor(
     private val api: GitHubApi
 ) {
     suspend fun createRepository(name: String, description: String? = null, isPrivate: Boolean = false, autoInit: Boolean = true) =
-        api.createRepository(CreateRepoRequest(name, description, isPrivate, autoInit))
+        api.createRepository(CreateRepoRequest(name = name, description = description, isPrivate = isPrivate, autoInit = autoInit))
 
     suspend fun uploadOrUpdateFile(
         owner: String,
