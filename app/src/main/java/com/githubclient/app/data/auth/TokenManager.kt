@@ -2,10 +2,13 @@ package com.githubclient.app.data.auth
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,29 +30,64 @@ class TokenManager @Inject constructor(
         context.getSharedPreferences("github_accounts.xml", Context.MODE_PRIVATE)
     }
 
-    private val accounts: MutableList<GitHubAccount>
-        get() {
-            val raw = prefs.getString(KEY_ACCOUNTS, null) ?: return mutableListOf()
-            return runCatching {
-                json.decodeFromString<List<GitHubAccount>>(raw).toMutableList()
-            }.getOrElse { mutableListOf() }
-        }
+    private fun accountsFromJson(): MutableList<GitHubAccount> {
+        val raw = prefs.getString(KEY_ACCOUNTS, null) ?: return mutableListOf()
+        return runCatching {
+            json.decodeFromString<List<GitHubAccount>>(raw).toMutableList()
+        }.getOrElse { mutableListOf() }
+    }
 
     private fun saveAccounts(list: List<GitHubAccount>) {
         prefs.edit().putString(KEY_ACCOUNTS, json.encodeToString(list)).apply()
     }
 
-    fun getAccounts(): List<GitHubAccount> = accounts
+    private fun migrateLegacyTokenIfNeeded() {
+        if (prefs.contains(KEY_MIGRATED)) return
+        val legacyToken = runCatching {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            val legacyPrefs = EncryptedSharedPreferences.create(
+                context,
+                "token.xml",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+            legacyPrefs.getString("github_access_token", null)
+        }.getOrNull() ?: runCatching {
+            context.getSharedPreferences("token_plain.xml", Context.MODE_PRIVATE)
+                .getString("github_access_token", null)
+        }.getOrNull()
+
+        if (!legacyToken.isNullOrBlank()) {
+            val list = accountsFromJson()
+            if (list.none { it.token == legacyToken }) {
+                list.add(GitHubAccount(login = "default", token = legacyToken))
+                saveAccounts(list)
+            }
+            if (getActiveLogin() == null) {
+                prefs.edit().putString(KEY_ACTIVE_LOGIN, "default").apply()
+            }
+        }
+        prefs.edit().putBoolean(KEY_MIGRATED, true).apply()
+    }
+
+    fun getAccounts(): List<GitHubAccount> {
+        migrateLegacyTokenIfNeeded()
+        return accountsFromJson()
+    }
 
     fun getActiveLogin(): String? = prefs.getString(KEY_ACTIVE_LOGIN, null)
 
     fun getActiveAccount(): GitHubAccount? {
+        migrateLegacyTokenIfNeeded()
         val login = getActiveLogin() ?: return null
-        return accounts.firstOrNull { it.login == login }
+        return accountsFromJson().firstOrNull { it.login == login }
     }
 
     fun saveAccount(account: GitHubAccount) {
-        val list = accounts
+        val list = accountsFromJson()
         val idx = list.indexOfFirst { it.login == account.login }
         if (idx >= 0) list[idx] = account else list.add(account)
         saveAccounts(list)
@@ -65,7 +103,7 @@ class TokenManager @Inject constructor(
     }
 
     fun deleteAccount(login: String) {
-        val list = accounts.filterNot { it.login == login }
+        val list = accountsFromJson().filterNot { it.login == login }
         saveAccounts(list)
         if (getActiveLogin() == login) {
             prefs.edit().remove(KEY_ACTIVE_LOGIN).apply()
@@ -74,7 +112,7 @@ class TokenManager @Inject constructor(
     }
 
     fun updateAvatar(login: String, avatarUrl: String?) {
-        val list = accounts
+        val list = accountsFromJson()
         val idx = list.indexOfFirst { it.login == login }
         if (idx >= 0) {
             list[idx] = list[idx].copy(avatarUrl = avatarUrl)
@@ -83,12 +121,11 @@ class TokenManager @Inject constructor(
     }
 
     fun switchAccount(login: String) {
-        if (accounts.any { it.login == login }) {
+        if (accountsFromJson().any { it.login == login }) {
             setActiveAccount(login)
         }
     }
 
-    // 兼容旧接口
     fun saveToken(token: String) {
         val account = getActiveAccount()
         if (account != null) {
@@ -130,5 +167,6 @@ class TokenManager @Inject constructor(
     companion object {
         private const val KEY_ACCOUNTS = "github_accounts"
         private const val KEY_ACTIVE_LOGIN = "github_active_login"
+        private const val KEY_MIGRATED = "github_migrated_v1"
     }
 }
