@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.githubclient.app.ui.screens.account.AccountScreen
 import com.githubclient.app.ui.screens.actions.ActionRunDetailScreen
 import com.githubclient.app.ui.screens.actions.ActionsScreen
 import com.githubclient.app.ui.screens.actions.WorkflowDispatchScreen
@@ -31,6 +32,7 @@ import com.githubclient.app.ui.screens.toolchain.ToolchainScreen
 object Routes {
     const val LOGIN = "login"
     const val HOME = "home"
+    const val ACCOUNT = "account"
     const val SEARCH = "search"
     const val TERMINAL = "terminal"
     const val PROMPT = "prompt"
@@ -54,6 +56,7 @@ object Routes {
     const val ARG_NAME = "name"
     const val ARG_RUN_ID = "runId"
     const val ARG_NUMBER = "number"
+
     fun repo(owner: String, name: String) = "repo/$owner/$name"
     fun actions(owner: String, name: String) = "repo/$owner/$name/actions"
     fun dispatch(owner: String, name: String) = "repo/$owner/$name/actions/dispatch"
@@ -88,7 +91,22 @@ fun AppNavHost() {
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
                 onOpenAutomation = { navController.navigate(Routes.AUTOMATION) },
                 onOpenTerminal = { navController.navigate(Routes.TERMINAL) },
-                onOpenPrompt = { navController.navigate(Routes.PROMPT) }
+                onOpenPrompt = { navController.navigate(Routes.PROMPT) },
+                onOpenAccount = { navController.navigate(Routes.ACCOUNT) }
+            )
+        }
+        composable(Routes.ACCOUNT) {
+            AccountScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                },
+                onOpenCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
+                onOpenRepositories = {
+                    navController.popBackStack()
+                }
             )
         }
         composable(Routes.SEARCH) {
