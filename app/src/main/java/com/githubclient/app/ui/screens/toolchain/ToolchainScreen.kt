@@ -1,5 +1,6 @@
 package com.githubclient.app.ui.screens.toolchain
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.githubclient.app.data.local.ToolchainItemEntity
 import com.githubclient.app.ui.components.EmptyState
 import com.githubclient.app.ui.components.LoadingState
 
@@ -43,22 +45,17 @@ fun ToolchainScreen(
 ) {
     val tools by viewModel.tools.collectAsState(initial = emptyList())
     val isDetecting by viewModel.isDetecting.collectAsState()
+    val message by viewModel.message.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("工具链") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 },
                 actions = {
-                    Button(
-                        onClick = { viewModel.detect() },
-                        enabled = !isDetecting,
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
+                    Button(onClick = { viewModel.detect() }, enabled = !isDetecting, modifier = Modifier.padding(end = 8.dp)) {
                         Text("检测")
                     }
                 }
@@ -67,8 +64,11 @@ fun ToolchainScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isDetecting) LoadingState()
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
             if (tools.isEmpty()) {
-                EmptyState("尚未检测工具")
+                EmptyState("点击右上角检测")
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -85,10 +85,7 @@ fun ToolchainScreen(
 }
 
 @Composable
-private fun ToolCard(
-    tool: com.githubclient.app.data.local.ToolchainItemEntity,
-    onDownload: () -> Unit
-) {
+private fun ToolCard(tool: ToolchainItemEntity, onDownload: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -101,36 +98,14 @@ private fun ToolCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(tool.toolName, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    text = tool.path ?: "未安装",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
+                Text(tool.path ?: "未安装", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             when {
-                tool.status == "INSTALLED" -> Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = "已安装",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(24.dp)
-                )
-                tool.status == "DOWNLOADING" -> CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 3.dp
-                )
-                tool.status == "FAILED" -> Icon(
-                    Icons.Default.Warning,
-                    contentDescription = "失败",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(24.dp)
-                )
+                tool.status == "INSTALLED" -> Icon(Icons.Default.CheckCircle, contentDescription = "已安装", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                tool.status == "DOWNLOADING" -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
+                tool.status == "FAILED" -> Icon(Icons.Default.Warning, contentDescription = "失败", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
                 else -> IconButton(onClick = onDownload) {
-                    Icon(
-                        Icons.Default.Download,
-                        contentDescription = "下载",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Default.Download, contentDescription = "下载", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
