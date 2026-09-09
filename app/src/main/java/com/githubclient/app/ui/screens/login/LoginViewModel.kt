@@ -27,7 +27,6 @@ class LoginViewModel @Inject constructor(
     private val tokenManager: TokenManager,
     private val oauthManager: OAuthManager
 ) : ViewModel() {
-
     private val _state = MutableStateFlow<LoginState>(LoginState.Idle)
     val state: StateFlow<LoginState> = _state
 
@@ -40,22 +39,6 @@ class LoginViewModel @Inject constructor(
                 OAuthState.Idle -> Unit
             }
         }.launchIn(viewModelScope)
-
-        autoLoginIfTokenExists()
-    }
-
-    private fun autoLoginIfTokenExists() {
-        if (!tokenManager.hasToken()) return
-        viewModelScope.launch {
-            _state.value = LoginState.Loading
-            try {
-                repository.getCurrentUser()
-                _state.value = LoginState.Success
-            } catch (e: Exception) {
-                tokenManager.clearToken()
-                _state.value = LoginState.Idle
-            }
-        }
     }
 
     fun startOAuth() {
