@@ -21,6 +21,17 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+
+        buildConfigField(
+            "String",
+            "GITHUB_OAUTH_CLIENT_ID",
+            "\"${System.getenv("GITHUB_OAUTH_CLIENT_ID") ?: "Ov231iiwSvMz2J2aFAi"}\""
+        )
+        buildConfigField(
+            "String",
+            "GITHUB_OAUTH_CLIENT_SECRET",
+            "\"${System.getenv("GITHUB_OAUTH_CLIENT_SECRET") ?: "5450396e4b486c6ef0d0941ddeed9ed35020f6f7"}\""
+        )
     }
 
     signingConfigs {
@@ -106,7 +117,6 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.browser)
     implementation(libs.commons.compress)
-    implementation(libs.xz)
 
     debugImplementation(libs.androidx.ui.tooling)
 }
