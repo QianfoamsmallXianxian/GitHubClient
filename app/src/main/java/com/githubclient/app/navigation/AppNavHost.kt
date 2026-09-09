@@ -27,17 +27,13 @@ import com.githubclient.app.ui.screens.releases.ReleasesScreen
 import com.githubclient.app.ui.screens.repo.RepoScreen
 import com.githubclient.app.ui.screens.search.SearchScreen
 import com.githubclient.app.ui.screens.settings.TokenSettingsScreen
-import com.githubclient.app.ui.screens.terminal.TerminalScreen
-import com.githubclient.app.ui.screens.toolchain.ToolchainScreen
 
 object Routes {
     const val LOGIN = "login"
     const val HOME = "home"
     const val ACCOUNT = "account"
     const val SEARCH = "search"
-    const val TERMINAL = "terminal"
     const val PROMPT = "prompt"
-    const val TOOLCHAIN = "toolchain"
     const val AUTOMATION = "automation"
     const val CREATE_REPO = "automation/create_repo"
     const val AUTO_CREATE_REPO = "automation/auto_create_repo"
@@ -89,11 +85,7 @@ fun AppNavHost() {
         composable(Routes.HOME) {
             HomeScreen(
                 onOpenRepo = { owner, name -> navController.navigate(Routes.repo(owner, name)) },
-                onOpenToolchain = { navController.navigate(Routes.TOOLCHAIN) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
-                onOpenAutomation = { navController.navigate(Routes.AUTOMATION) },
-                onOpenTerminal = { navController.navigate(Routes.TERMINAL) },
-                onOpenPrompt = { navController.navigate(Routes.PROMPT) },
                 onOpenAccount = { navController.navigate(Routes.ACCOUNT) }
             )
         }
@@ -125,14 +117,8 @@ fun AppNavHost() {
         composable(Routes.SEARCH) {
             SearchScreen(onBack = { navController.popBackStack() })
         }
-        composable(Routes.TERMINAL) {
-            TerminalScreen(onBack = { navController.popBackStack() })
-        }
         composable(Routes.PROMPT) {
             PromptScreen(onBack = { navController.popBackStack() })
-        }
-        composable(Routes.TOOLCHAIN) {
-            ToolchainScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.AUTOMATION) {
             AutomationScreen(
