@@ -6,12 +6,16 @@ import com.githubclient.app.data.repository.GitHubRepository
 import com.githubclient.app.data.repository.GitHubWriteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream
-import java.io.ByteArrayInputStream
+import org.apache.commons.compress.archivers.zip.ZipFile
+import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 
 sealed interface ZipUploadState {
@@ -47,37 +51,51 @@ class ZipUploadViewModel @Inject constructor(
             _state.value = ZipUploadState.Loading
             try {
                 val cleanOwner = owner.trim().substringBefore('/').ifBlank { return@launch }
-                val files = withContext(Dispatchers.IO) { stripCommonRoot(extractTextFiles(zipBytes)) }
+                val files = withContext(Dispatchers.IO) {
+                    stripCommonRoot(extractTextFilesFast(zipBytes))
+                }
                 if (files.isEmpty()) {
                     _state.value = ZipUploadState.Error("ZIP 中没有找到可上传的文本源码文件")
                     return@launch
                 }
 
                 val total = files.size
-                var done = 0
                 val failed = mutableListOf<String>()
 
-                for ((path, content) in files) {
+                val results = withContext(Dispatchers.IO) {
+                    files.entries.chunked(4).map { chunk ->
+                        coroutineScope {
+                            chunk.map { (path, content) ->
+                                async {
+                                    runCatching {
+                                        writeRepository.uploadOrUpdateFile(
+                                            owner = cleanOwner,
+                                            repo = repo,
+                                            path = path,
+                                            content = content,
+                                            message = "zip upload $path"
+                                        )
+                                    }.fold(
+                                        onSuccess = { "$path: ok" },
+                                        onFailure = { "$path: ${it.message}" }
+                                    )
+                                }
+                            }.awaitAll()
+                        }
+                    }.flatten()
+                }
+
+                var done = 0
+                for (r in results) {
                     done++
-                    _state.value = ZipUploadState.Progress(done, total, path)
-                    runCatching {
-                        writeRepository.uploadOrUpdateFile(
-                            owner = cleanOwner,
-                            repo = repo,
-                            path = path,
-                            content = content,
-                            message = "zip upload $path"
-                        )
-                    }.onFailure { e ->
-                        failed.add("$path: ${e.message}")
-                    }
+                    if (!r.endsWith(": ok")) failed.add(r)
+                    _state.value = ZipUploadState.Progress(done, total, r.substringBeforeLast(':'))
                 }
 
                 val uploaded = total - failed.size
                 val triggerMessage = if (autoTriggerBuild && uploaded > 0) {
-                    runCatching {
-                        triggerBuild(cleanOwner, repo)
-                    }.getOrElse { "触发失败: ${it.message}" }
+                    runCatching { triggerBuild(cleanOwner, repo) }
+                        .getOrElse { "触发失败: ${it.message}" }
                 } else {
                     "未触发构建"
                 }
@@ -93,26 +111,30 @@ class ZipUploadViewModel @Inject constructor(
         }
     }
 
-    private fun extractTextFiles(zipBytes: ByteArray): Map<String, String> {
-        val files = linkedMapOf<String, String>()
-        ByteArrayInputStream(zipBytes).use { input ->
-            ZipArchiveInputStream(input).use { zip ->
-                var entry = zip.nextZipEntry
-                while (entry != null) {
-                    if (!entry.isDirectory) {
-                        val path = entry.name.replace('\\', '/').trimStart('/')
-                        val ext = path.substringAfterLast('.', "").lowercase()
-                        val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
-                        if (ext in textExtensions || isGitignore) {
-                            val content = zip.readBytes().toString(Charsets.UTF_8)
-                            files[path] = content
+    private fun extractTextFilesFast(zipBytes: ByteArray): Map<String, String> {
+        val tempFile = File.createTempFile("src_upload", ".zip")
+        try {
+            FileOutputStream(tempFile).use { it.write(zipBytes) }
+            val files = linkedMapOf<String, String>()
+            ZipFile.builder().setFile(tempFile).get().use { zip ->
+                val entries = zip.entries
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    if (entry.isDirectory) continue
+                    val path = entry.name.replace('\\', '/').trimStart('/')
+                    val ext = path.substringAfterLast('.', "").lowercase()
+                    val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
+                    if (ext in textExtensions || isGitignore) {
+                        zip.getInputStream(entry).use { input ->
+                            files[path] = input.readBytes().toString(Charsets.UTF_8)
                         }
                     }
-                    entry = zip.nextZipEntry
                 }
             }
+            return files
+        } finally {
+            tempFile.delete()
         }
-        return files
     }
 
     private fun stripCommonRoot(files: Map<String, String>): Map<String, String> {
@@ -137,8 +159,7 @@ class ZipUploadViewModel @Inject constructor(
     private suspend fun triggerBuild(owner: String, repo: String): String {
         val workflows = repository.getWorkflows(owner, repo).workflows
             .filter { it.state == "active" }
-        val workflow = workflows.firstOrNull()
-            ?: return "没有找到可用的 workflow"
+        val workflow = workflows.firstOrNull() ?: return "没有找到可用的 workflow"
         repository.dispatchWorkflow(owner, repo, workflow.id, "main")
         return "已触发构建: ${workflow.name}"
     }
