@@ -13,6 +13,7 @@ import com.githubclient.app.data.model.Workflow
 import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.model.WorkflowRunsResponse
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -140,6 +141,14 @@ interface GitHubApi {
 
     @POST("repos/{owner}/{repo}/actions/runs/{run_id}/rerun")
     suspend fun rerunWorkflowRun(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    )
+
+    @DELETE("repos/{owner}/{repo}/actions/runs/{run_id}")
+    suspend fun deleteWorkflowRun(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
         @Path("run_id") runId: Long,
