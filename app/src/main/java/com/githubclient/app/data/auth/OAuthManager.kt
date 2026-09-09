@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
+import com.githubclient.app.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,8 +35,8 @@ class OAuthManager @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val tokenManager: TokenManager
 ) {
-    private val clientId = "YOUR_GITHUB_OAUTH_CLIENT_ID"
-    private val clientSecret = "YOUR_GITHUB_OAUTH_CLIENT_SECRET"
+    private val clientId: String = BuildConfig.GITHUB_OAUTH_CLIENT_ID
+    private val clientSecret: String = BuildConfig.GITHUB_OAUTH_CLIENT_SECRET
     private val redirectUri = "githubclient://oauth"
 
     private val _oauthState = MutableStateFlow<OAuthState>(OAuthState.Idle)
@@ -45,6 +46,13 @@ class OAuthManager @Inject constructor(
     private var pendingState: String? = null
 
     suspend fun startOAuthFlow() {
+        if (clientId.isBlank() || clientId.startsWith("YOUR_")) {
+            _oauthState.value = OAuthState.Error(
+                "OAuth 尚未配置。\n\n请先在 GitHub 创建 OAuth App，然后在 app/build.gradle.kts 中填入 Client ID 和 Secret，或直接使用 Token 登录。"
+            )
+            return
+        }
+
         val codeVerifier = generateCodeVerifier()
         val codeChallenge = generateCodeChallenge(codeVerifier)
         val state = generateRandomState()
@@ -64,10 +72,12 @@ class OAuthManager @Inject constructor(
 
         val launched = withContext(Dispatchers.Main) {
             try {
-                CustomTabsIntent.Builder().build().launchUrl(context, authUrl)
+                CustomTabsIntent.Builder()
+                    .build()
+                    .launchUrl(context, authUrl)
                 true
             } catch (e: Exception) {
-                Timber.e(e, "CustomTabs launch failed")
+                Timber.e(e, "CustomTabs launch failed, fallback to ACTION_VIEW")
                 false
             }
         }
@@ -130,7 +140,9 @@ class OAuthManager @Inject constructor(
                 .build()
 
             okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("HTTP ${response.code}")
+                }
                 val json = JSONObject(response.body?.string() ?: "{}")
                 val token = json.optString("access_token")
                 if (token.isBlank()) {
