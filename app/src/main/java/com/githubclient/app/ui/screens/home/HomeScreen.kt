@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
@@ -47,7 +48,6 @@ fun HomeScreen(
     onOpenRepo: (String, String) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAutomation: () -> Unit,
-    onOpenPrompt: () -> Unit,
     onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -69,7 +69,18 @@ fun HomeScreen(
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(selected = false, onClick = onOpenSearch, icon = { Icon(Icons.Default.Search, contentDescription = "搜索") }, label = { Text("搜索") })
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenSearch,
+                    icon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
+                    label = { Text("搜索") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenAutomation,
+                    icon = { Icon(Icons.Default.PlayArrow, contentDescription = "自动化") },
+                    label = { Text("自动化") }
+                )
             }
         }
     ) { padding ->
