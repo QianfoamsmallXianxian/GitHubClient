@@ -22,9 +22,9 @@ sealed interface AiModifyState {
 
 @HiltViewModel
 class AiModifyViewModel @Inject constructor(
-    private val githubRepository: GitHubRepository,
-    private val writeRepository: GitHubWriteRepository,
-    private val aiCodeManager: AiCodeManager,
+    private val githubRepository: GitHubRepository
+    private val writeRepository: GitHubWriteRepository
+    private val aiCodeManager: AiCodeManager
     private val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
@@ -45,18 +45,17 @@ class AiModifyViewModel @Inject constructor(
                 }
 
                 val newCode = aiCodeManager.generateModifiedCode(
-                    instruction = instruction,
-                    currentCode = currentCode,
+                    instruction = instruction
+                    currentCode = currentCode
                     filePath = cleanPath
                 ).getOrThrow()
 
                 writeRepository.uploadOrUpdateFile(
-                    owner = owner,
-                    repo = repo,
-                    path = cleanPath,
-                    content = newCode,
-                    message = "AI: $instruction",
-                    sha = file.sha
+                    owner = owner
+                    repo = repo
+                    path = cleanPath
+                    content = newCode
+                    message = "AI: $instruction"
                 )
                 _state.value = AiModifyState.Success("$cleanPath 已由 AI 修改并提交")
             } catch (e: Exception) {
