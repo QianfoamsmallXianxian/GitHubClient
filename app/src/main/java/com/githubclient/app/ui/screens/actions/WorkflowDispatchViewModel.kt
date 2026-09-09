@@ -27,9 +27,11 @@ class WorkflowDispatchViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _workflows.value = repository.getWorkflows(owner, name).filter { it.state == "active" }
+                _workflows.value = repository.getWorkflows(owner, name).workflows
+                    .filter { it.state == "active" }
             } catch (e: Exception) {
                 _workflows.value = emptyList()
+                _message.value = e.message ?: "加载 Workflow 失败"
             } finally {
                 _isLoading.value = false
             }
