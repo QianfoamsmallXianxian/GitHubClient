@@ -133,7 +133,6 @@ fun FileContentDialog(
                                     name = name,
                                     path = file.path,
                                     content = editableText,
-                                    sha = file.sha
                                 )
                                 isEditing = false
                             }
