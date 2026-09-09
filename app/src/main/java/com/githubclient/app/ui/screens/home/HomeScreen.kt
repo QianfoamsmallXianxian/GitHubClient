@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,6 +48,8 @@ fun HomeScreen(
     onOpenToolchain: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAutomation: () -> Unit,
+    onOpenTerminal: () -> Unit,
+    onOpenPrompt: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val repos by viewModel.repos.collectAsState(initial = emptyList())
@@ -58,6 +62,12 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("仓库") },
                 actions = {
+                    IconButton(onClick = onOpenPrompt) {
+                        Icon(Icons.Default.SmartToy, contentDescription = "提示词")
+                    }
+                    IconButton(onClick = onOpenTerminal) {
+                        Icon(Icons.Default.Terminal, contentDescription = "终端")
+                    }
                     IconButton(onClick = onOpenAutomation) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "自动化")
                     }
