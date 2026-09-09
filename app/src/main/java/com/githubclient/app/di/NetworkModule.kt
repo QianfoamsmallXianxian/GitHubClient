@@ -42,16 +42,19 @@ object NetworkModule {
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .addInterceptor { chain ->
+                val request = chain.request()
+                val url = request.url.toString()
+                // OAuth token 交换请求不应携带 Authorization，避免循环或覆盖
                 val token = tokenManager.getToken()
-                val request = if (token.isNullOrBlank()) {
-                    chain.request()
-                } else {
-                    chain.request().newBuilder()
+                val newRequest = if (!token.isNullOrBlank() && !url.endsWith("/login/oauth/access_token")) {
+                    request.newBuilder()
                         .addHeader("Authorization", "Bearer $token")
                         .addHeader("Accept", "application/vnd.github+json")
                         .build()
+                } else {
+                    request
                 }
-                chain.proceed(request)
+                chain.proceed(newRequest)
             }
             .addInterceptor(logging)
             .build()
