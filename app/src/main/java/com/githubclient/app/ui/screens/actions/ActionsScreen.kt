@@ -4,8 +4,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -62,25 +64,32 @@ fun ActionsScreen(
             TopAppBar(
                 title = { Text("Actions") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
-                },
-                actions = {
-                    Button(onClick = onOpenDispatch, modifier = Modifier.padding(end = 8.dp)) {
-                        Text("手动触发")
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 }
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
             message?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
             }
+
             when {
                 isLoading && runs.isEmpty() -> LoadingState()
                 runs.isEmpty() -> EmptyState("暂无 Workflow Runs")
                 else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -94,6 +103,16 @@ fun ActionsScreen(
                         )
                     }
                 }
+            }
+
+            Button(
+                onClick = onOpenDispatch,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Text("手动触发 Workflow")
             }
         }
     }
@@ -112,21 +131,44 @@ private fun RunCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpen)
+                .padding(16.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(run.displayTitle ?: run.name ?: "Run #${run.id}", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${run.status} ${run.conclusion ?: ""}".trim(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                    run.headBranch?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+                    Text(
+                        run.displayTitle ?: run.name ?: "Run #${run.id}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${run.status} ${run.conclusion ?: ""}".trim(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    run.headBranch?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
                 StatusIcon(run)
             }
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -148,9 +190,29 @@ private fun RunCard(
 @Composable
 private fun StatusIcon(run: WorkflowRun) {
     when {
-        run.status == "completed" && run.conclusion == "success" -> Icon(Icons.Default.CheckCircle, contentDescription = "成功", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
-        run.status == "completed" && run.conclusion == "failure" -> Icon(Icons.Default.Error, contentDescription = "失败", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
-        run.status == "in_progress" || run.status == "queued" -> Icon(Icons.Default.PlayArrow, contentDescription = "进行中", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-        else -> Icon(Icons.Default.Schedule, contentDescription = "等待", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        run.status == "completed" && run.conclusion == "success" -> Icon(
+            Icons.Default.CheckCircle,
+            contentDescription = "成功",
+            tint = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(24.dp)
+        )
+        run.status == "completed" && run.conclusion == "failure" -> Icon(
+            Icons.Default.Error,
+            contentDescription = "失败",
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(24.dp)
+        )
+        run.status == "in_progress" || run.status == "queued" -> Icon(
+            Icons.Default.PlayArrow,
+            contentDescription = "进行中",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+        else -> Icon(
+            Icons.Default.Schedule,
+            contentDescription = "等待",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
