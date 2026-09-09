@@ -34,18 +34,28 @@ class LoginViewModel @Inject constructor(
     init {
         oauthManager.oauthState.onEach { oauthState ->
             when (oauthState) {
-                is OAuthState.Success -> {
-                    _state.value = LoginState.Success
-                }
-                is OAuthState.Error -> {
-                    _state.value = LoginState.Error(oauthState.message)
-                }
-                is OAuthState.Launching -> {
-                    _state.value = LoginState.Loading
-                }
+                is OAuthState.Success -> _state.value = LoginState.Success
+                is OAuthState.Error -> _state.value = LoginState.Error(oauthState.message)
+                is OAuthState.Launching -> _state.value = LoginState.Loading
                 OAuthState.Idle -> Unit
             }
         }.launchIn(viewModelScope)
+
+        autoLoginIfTokenExists()
+    }
+
+    private fun autoLoginIfTokenExists() {
+        if (!tokenManager.hasToken()) return
+        viewModelScope.launch {
+            _state.value = LoginState.Loading
+            try {
+                repository.getCurrentUser()
+                _state.value = LoginState.Success
+            } catch (e: Exception) {
+                tokenManager.clearToken()
+                _state.value = LoginState.Idle
+            }
+        }
     }
 
     fun startOAuth() {
