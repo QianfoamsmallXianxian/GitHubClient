@@ -87,7 +87,7 @@ fun ActionsScreen(
 
             when {
                 isLoading && runs.isEmpty() -> LoadingState()
-                runs.isEmpty() -> EmptyState("暂无 Workflow Runs")
+                runs.isEmpty() -> EmptyState("暂无工作流运行")
                 else -> LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
@@ -112,7 +112,7 @@ fun ActionsScreen(
                     .padding(16.dp)
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Text("手动触发 Workflow")
+                Text("手动触发工作流")
             }
         }
     }
