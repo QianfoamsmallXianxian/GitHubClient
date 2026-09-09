@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -190,23 +189,13 @@ private fun AccountMenuItem(
     onClick: () -> Unit,
     tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
 ) {
-    Row(
+    Text(
+        text = title,
+        style = MaterialTheme.typography.bodyLarge,
+        color = tint,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = tint
-        )
-        Spacer(Modifier.weight(1f))
-        Icon(
-            Icons.Default.ExitToApp,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
+            .padding(vertical = 12.dp)
+    )
 }
