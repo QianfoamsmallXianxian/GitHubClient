@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Upload
@@ -39,10 +40,12 @@ fun AutomationScreen(
     onOpenAutoCreateRepo: () -> Unit,
     onOpenManualCreateRepo: () -> Unit,
     onOpenUpload: () -> Unit,
+    onOpenZipUpload: () -> Unit,
     onOpenAiModify: () -> Unit
 ) {
     val features = listOf(
         FeatureItem("一键创建仓库并上传", "扫描本地项目目录，自动创建远程仓库并上传所有源码文件", Icons.Default.Folder, onOpenAutoCreateRepo),
+        FeatureItem("ZIP 源码一键上传", "选择 ZIP 自动解压到 GitHub 仓库并触发 Actions 构建", Icons.Default.Archive, onOpenZipUpload),
         FeatureItem("AI 修改源码", "输入需求自动改代码并提交", Icons.Default.AutoAwesome, onOpenAiModify),
         FeatureItem("手动创建仓库", "填写信息创建远程仓库", Icons.Default.Add, onOpenManualCreateRepo),
         FeatureItem("上传源码", "上传或替换单个仓库文件", Icons.Default.Upload, onOpenUpload),
