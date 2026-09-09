@@ -45,7 +45,6 @@ fun AccountScreen(
     onLogout: () -> Unit,
     onOpenCreateRepo: () -> Unit,
     onOpenRepositories: () -> Unit,
-    onOpenTokenSettings: () -> Unit,
     viewModel: AccountViewModel = hiltViewModel()
 ) {
     val user by viewModel.user.collectAsState()
@@ -78,30 +77,11 @@ fun AccountScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (isLoading) {
-                LoadingState()
-            }
-
-            error?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-
+            if (isLoading) LoadingState()
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             user?.let { u -> UserCard(u) }
-
-            Text(
-                text = "令牌：${viewModel.maskedToken}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "类型：${viewModel.tokenType}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("令牌：${viewModel.maskedToken}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("类型：${viewModel.tokenType}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             AccountMenuItem("创建新仓库", onClick = onOpenCreateRepo)
             AccountMenuItem("仓库列表", onClick = onOpenRepositories)
@@ -109,13 +89,10 @@ fun AccountScreen(
             AccountMenuItem("代码片段", onClick = { openUrl(context, "https://gist.github.com/${user?.login ?: ""}") })
             AccountMenuItem("组织", onClick = { openUrl(context, "https://github.com/settings/organizations") })
             AccountMenuItem("赞助", onClick = { openUrl(context, "https://github.com/sponsors") })
-            AccountMenuItem("设置", onClick = onOpenTokenSettings)
+            AccountMenuItem("获取令牌", onClick = { openUrl(context, "https://github.com/settings/tokens") })
             AccountMenuItem(
                 "退出登录",
-                onClick = {
-                    viewModel.logout()
-                    onLogout()
-                },
+                onClick = { viewModel.logout(); onLogout() },
                 tint = MaterialTheme.colorScheme.error
             )
         }
@@ -131,34 +108,15 @@ private fun openUrl(context: android.content.Context, url: String) {
 
 @Composable
 private fun UserCard(u: User) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Icon(
-                Icons.Default.AccountCircle,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(8.dp))
             Text(u.name ?: u.login, style = MaterialTheme.typography.titleLarge)
-            Text(
-                "@${u.login}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            u.bio?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall)
-            }
+            Text("@${u.login}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            u.bio?.let { Spacer(Modifier.height(4.dp)); Text(it, style = MaterialTheme.typography.bodySmall) }
             Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 AccountStat("仓库", u.publicRepos?.toString() ?: "-")
                 AccountStat("关注者", u.followers?.toString() ?: "-")
                 AccountStat("关注中", u.following?.toString() ?: "-")
@@ -170,32 +128,17 @@ private fun UserCard(u: User) {
 @Composable
 private fun AccountStat(label: String, value: String) {
     Column {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(value, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun AccountMenuItem(
-    title: String,
-    onClick: () -> Unit,
-    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
-) {
+private fun AccountMenuItem(title: String, onClick: () -> Unit, tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface) {
     Text(
         text = title,
         style = MaterialTheme.typography.bodyLarge,
         color = tint,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp)
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp)
     )
 }
