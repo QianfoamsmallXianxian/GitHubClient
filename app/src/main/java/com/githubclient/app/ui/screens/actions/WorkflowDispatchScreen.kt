@@ -45,6 +45,7 @@ fun WorkflowDispatchScreen(
 ) {
     val workflows by viewModel.workflows.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val message by viewModel.message.collectAsState()
 
     LaunchedEffect(owner, name) { viewModel.load(owner, name) }
 
@@ -59,6 +60,9 @@ fun WorkflowDispatchScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            message?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
             when {
                 isLoading && workflows.isEmpty() -> LoadingState()
                 workflows.isEmpty() -> EmptyState("暂无可用 Workflow")
