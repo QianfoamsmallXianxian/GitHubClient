@@ -104,6 +104,7 @@ fun AppNavHost() {
                 onOpenRepositories = {
                     navController.popBackStack()
                 },
+                onOpenTokenSettings = { navController.navigate(Routes.TOKEN_SETTINGS) },
             )
         }
         composable(Routes.TOKEN_SETTINGS) {
