@@ -45,8 +45,9 @@ class ToolchainViewModel @Inject constructor(
             _message.value = "开始下载 $toolName ..."
             try {
                 toolchainManager.downloadAndInstall(toolName)
-                _message.value = "$toolName 下载完成"
-                detect()
+                _message.value = "$toolName 下载并安装完成"
+                // 重新检测，不会覆盖已安装状态
+                toolchainManager.detectAll()
             } catch (e: Exception) {
                 _message.value = "$toolName 下载失败: ${e.message}"
             }
