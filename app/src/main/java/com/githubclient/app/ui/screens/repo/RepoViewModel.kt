@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.data.repository.GitHubRepository
+import com.githubclient.app.data.repository.GitHubWriteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ import javax.inject.Inject
 @HiltViewModel
 class RepoViewModel @Inject constructor(
     private val repository: GitHubRepository,
+    private val writeRepository: GitHubWriteRepository,
     private val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
@@ -33,6 +35,9 @@ class RepoViewModel @Inject constructor(
 
     private val _isFileLoading = MutableStateFlow(false)
     val isFileLoading: StateFlow<Boolean> = _isFileLoading
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message
 
     fun loadRepo(owner: String, name: String) {
         viewModelScope.launch {
@@ -77,6 +82,33 @@ class RepoViewModel @Inject constructor(
                 _fileContent.value = null
             } finally {
                 _isFileLoading.value = false
+            }
+        }
+    }
+
+    fun saveFileContent(
+        owner: String,
+        name: String,
+        path: String,
+        content: String,
+        sha: String?,
+        branch: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                writeRepository.uploadOrUpdateFile(
+                    owner = owner,
+                    repo = name,
+                    path = path,
+                    content = content,
+                    message = "edit $path",
+                    branch = branch,
+                    sha = sha
+                )
+                _message.value = "文件已保存"
+                loadContents(owner, name, path.substringBeforeLast('/', ""))
+            } catch (e: Exception) {
+                _message.value = "保存失败: ${e.message}"
             }
         }
     }
