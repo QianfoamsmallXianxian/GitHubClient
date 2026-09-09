@@ -40,6 +40,17 @@ class RepoViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    fun deleteRepository(owner: String, name: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteRepository(owner, name)
+                _message.value = "仓库已删除"
+            } catch (e: Exception) {
+                _message.value = "删除失败: ${e.message}"
+            }
+        }
+    }
+
     fun loadRepo(owner: String, name: String) {
         viewModelScope.launch {
             _isLoading.value = true
