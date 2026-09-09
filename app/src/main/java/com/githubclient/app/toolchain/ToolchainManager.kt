@@ -1,6 +1,7 @@
 package com.githubclient.app.toolchain
 
 import android.content.Context
+import android.os.Build
 import com.githubclient.app.data.local.DownloadTaskDao
 import com.githubclient.app.data.local.DownloadTaskEntity
 import com.githubclient.app.data.local.ToolchainDao
@@ -35,12 +36,18 @@ class ToolchainManager @Inject constructor(
     fun observeTools(): Flow<List<ToolchainItemEntity>> = toolchainDao.observeAll()
     fun observeDownloadTasks(): Flow<List<DownloadTaskEntity>> = downloadTaskDao.observeAll()
 
+    private val arch: String = when {
+        Build.SUPPORTED_ABIS.contains("arm64-v8a") -> "aarch64"
+        Build.SUPPORTED_ABIS.contains("armeabi-v7a") -> "arm"
+        else -> "x86_64"
+    }
+
     fun toolDownloadUrls(): Map<String, String> = mapOf(
-        "JDK" to "https://github.com/adoptium/temurin17-binaries/releases/latest/download/OpenJDK17U-jdk_aarch64_linux_hotspot_17.0.13_11.tar.gz",
+        "JDK" to "https://github.com/adoptium/temurin17-binaries/releases/latest/download/OpenJDK17U-jdk_${arch}_linux_hotspot_17.0.13_11.tar.gz",
         "Gradle" to "https://services.gradle.org/distributions/gradle-8.10.2-bin.zip",
-        "Node.js" to "https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-arm64.tar.xz",
-        "Go" to "https://go.dev/dl/go1.23.3.linux-arm64.tar.gz",
-        "CMake" to "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-aarch64.tar.gz"
+        "Node.js" to "https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-${arch}.tar.xz",
+        "Go" to "https://go.dev/dl/go1.23.3.linux-${arch}.tar.gz",
+        "CMake" to "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-${arch}.tar.gz"
     )
 
     suspend fun detectAll(): List<ToolchainItemEntity> = withContext(Dispatchers.IO) {
@@ -153,9 +160,7 @@ class ToolchainManager @Inject constructor(
             var entry = zip.nextEntry
             while (entry != null) {
                 val target = File(destDir, entry.name)
-                if (entry.isDirectory) {
-                    target.mkdirs()
-                } else {
+                if (entry.isDirectory) target.mkdirs() else {
                     target.parentFile?.mkdirs()
                     target.outputStream().use { out -> zip.copyTo(out) }
                 }
@@ -170,9 +175,7 @@ class ToolchainManager @Inject constructor(
             var entry = tar.nextTarEntry
             while (entry != null) {
                 val target = File(destDir, entry.name)
-                if (entry.isDirectory) {
-                    target.mkdirs()
-                } else {
+                if (entry.isDirectory) target.mkdirs() else {
                     target.parentFile?.mkdirs()
                     target.outputStream().use { out -> tar.copyTo(out) }
                 }
@@ -180,7 +183,4 @@ class ToolchainManager @Inject constructor(
             }
         }
     }
-
-    suspend fun installFromDownload(toolName: String, url: String, checksum: String? = null): Long =
-        downloadAndInstall(toolName)
 }
