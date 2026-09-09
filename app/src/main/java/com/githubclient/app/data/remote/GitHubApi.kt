@@ -11,6 +11,7 @@ import com.githubclient.app.data.model.SearchUsersResponse
 import com.githubclient.app.data.model.User
 import com.githubclient.app.data.model.Workflow
 import com.githubclient.app.data.model.WorkflowRun
+import com.githubclient.app.data.model.WorkflowListResponse
 import com.githubclient.app.data.model.WorkflowRunsResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -105,7 +106,7 @@ interface GitHubApi {
     suspend fun getWorkflows(
         @Path("owner") owner: String,
         @Path("repo") repo: String
-    ): List<Workflow>
+    ): WorkflowListResponse
 
     @GET("repos/{owner}/{repo}/actions/runs")
     suspend fun getWorkflowRuns(
