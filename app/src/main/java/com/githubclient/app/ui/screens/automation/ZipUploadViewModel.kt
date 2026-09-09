@@ -33,7 +33,8 @@ class ZipUploadViewModel @Inject constructor(
     private val textExtensions = setOf(
         "kt", "java", "xml", "kts", "gradle", "properties", "toml", "md",
         "yml", "yaml", "json", "pro", "txt", "sh", "py", "js", "ts",
-        "html", "css", "sql", "csv", "bat", "gitignore"
+        "html", "css", "sql", "csv", "bat", "c", "cpp", "h", "hpp",
+        "cmake", "mk", "conf", "ini", "sbt", "scala", "go", "rs"
     )
 
     fun uploadZip(
@@ -45,7 +46,8 @@ class ZipUploadViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = ZipUploadState.Loading
             try {
-                val files = withContext(Dispatchers.IO) { extractTextFiles(zipBytes) }
+                val cleanOwner = owner.trim().substringBefore('/').ifBlank { return@launch }
+                val files = withContext(Dispatchers.IO) { stripCommonRoot(extractTextFiles(zipBytes)) }
                 if (files.isEmpty()) {
                     _state.value = ZipUploadState.Error("ZIP 中没有找到可上传的文本源码文件")
                     return@launch
@@ -60,11 +62,11 @@ class ZipUploadViewModel @Inject constructor(
                     _state.value = ZipUploadState.Progress(done, total, path)
                     runCatching {
                         writeRepository.uploadOrUpdateFile(
-                            owner = owner,
+                            owner = cleanOwner,
                             repo = repo,
                             path = path,
                             content = content,
-                            message = "zip upload"
+                            message = "zip upload $path"
                         )
                     }.onFailure { e ->
                         failed.add("$path: ${e.message}")
@@ -74,7 +76,7 @@ class ZipUploadViewModel @Inject constructor(
                 val uploaded = total - failed.size
                 val triggerMessage = if (autoTriggerBuild && uploaded > 0) {
                     runCatching {
-                        triggerBuild(owner, repo)
+                        triggerBuild(cleanOwner, repo)
                     }.getOrElse { "触发失败: ${it.message}" }
                 } else {
                     "未触发构建"
@@ -98,9 +100,10 @@ class ZipUploadViewModel @Inject constructor(
                 var entry = zip.nextZipEntry
                 while (entry != null) {
                     if (!entry.isDirectory) {
-                        val path = entry.name.removePrefix("/")
+                        val path = entry.name.replace('\\', '/').trimStart('/')
                         val ext = path.substringAfterLast('.', "").lowercase()
-                        if (ext in textExtensions || path.endsWith(".gitignore")) {
+                        val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
+                        if (ext in textExtensions || isGitignore) {
                             val content = zip.readBytes().toString(Charsets.UTF_8)
                             files[path] = content
                         }
@@ -110,6 +113,25 @@ class ZipUploadViewModel @Inject constructor(
             }
         }
         return files
+    }
+
+    private fun stripCommonRoot(files: Map<String, String>): Map<String, String> {
+        if (files.isEmpty()) return files
+        val paths = files.keys.toList()
+        val splitPaths = paths.map { it.split('/').filter { seg -> seg.isNotBlank() } }
+        val minSegments = splitPaths.minOf { it.size }
+        var commonSegments = 0
+        outer@ for (i in 0 until minSegments) {
+            val segment = splitPaths[0][i]
+            for (parts in splitPaths) {
+                if (parts[i] != segment) break@outer
+            }
+            commonSegments = i + 1
+        }
+        val stripCount = commonSegments.coerceAtMost(minSegments - 1).coerceAtLeast(0)
+        return files.mapKeys { (path, _) ->
+            path.split('/').filter { it.isNotBlank() }.drop(stripCount).joinToString("/")
+        }
     }
 
     private suspend fun triggerBuild(owner: String, repo: String): String {
