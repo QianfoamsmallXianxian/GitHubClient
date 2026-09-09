@@ -31,11 +31,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.githubclient.app.terminal.TerminalOutput
@@ -48,8 +50,9 @@ fun TerminalScreen(
 ) {
     val history by viewModel.history.collectAsState()
     val isRunning by viewModel.isRunning.collectAsState()
-    val command by viewModel.command.collectAsState()
     val useRoot by viewModel.useRoot.collectAsState()
+    val message by viewModel.message.collectAsState()
+    var command by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     LaunchedEffect(history.size) {
@@ -113,6 +116,15 @@ fun TerminalScreen(
                 }
             }
 
+            message?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -139,7 +151,7 @@ fun TerminalScreen(
             ) {
                 OutlinedTextField(
                     value = command,
-                    onValueChange = viewModel::onCommandChange,
+                    onValueChange = { command = it },
                     label = { Text("输入命令") },
                     singleLine = true,
                     enabled = !isRunning,
@@ -154,7 +166,10 @@ fun TerminalScreen(
                     )
                 } else {
                     IconButton(
-                        onClick = viewModel::execute,
+                        onClick = {
+                            viewModel.execute(command)
+                            command = ""
+                        },
                         enabled = command.isNotBlank(),
                         modifier = Modifier.padding(start = 8.dp)
                     ) {
