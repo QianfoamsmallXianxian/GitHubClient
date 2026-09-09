@@ -22,9 +22,6 @@ class ToolchainViewModel @Inject constructor(
     private val _isDetecting = MutableStateFlow(false)
     val isDetecting: StateFlow<Boolean> = _isDetecting
 
-    private val _message = MutableStateFlow<String?>(null)
-    val message: StateFlow<String?> = _message
-
     init { detect() }
 
     fun detect() {
@@ -32,28 +29,9 @@ class ToolchainViewModel @Inject constructor(
             _isDetecting.value = true
             try {
                 toolchainManager.detectAll()
-            } catch (e: Exception) {
-                _message.value = "检测失败: ${e.message}"
+            } catch (_: Exception) {
             } finally {
                 _isDetecting.value = false
-            }
-        }
-    }
-
-    fun download(toolName: String) {
-        viewModelScope.launch {
-            _message.value = "开始下载 $toolName ..."
-            try {
-                toolchainManager.downloadAndInstall(toolName)
-                val installed = toolchainManager.isToolInstalled(toolName)
-                if (installed) {
-                    _message.value = "$toolName 安装完成"
-                } else {
-                    _message.value = "$toolName 下载失败或解压失败，请重试"
-                }
-                toolchainManager.detectAll()
-            } catch (e: Exception) {
-                _message.value = "$toolName 下载失败: ${e.message}"
             }
         }
     }
