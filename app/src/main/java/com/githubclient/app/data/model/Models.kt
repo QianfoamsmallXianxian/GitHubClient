@@ -129,7 +129,9 @@ data class RepoContent(
     val sha: String,
     val size: Long? = null,
     @SerialName("download_url") val downloadUrl: String? = null,
-    @SerialName("html_url") val htmlUrl: String? = null
+    @SerialName("html_url") val htmlUrl: String? = null,
+    val content: String? = null,
+    val encoding: String? = null
 )
 
 @Serializable
