@@ -39,7 +39,8 @@ class ToolchainManager @Inject constructor(
     private val arch: String = when {
         Build.SUPPORTED_ABIS.contains("arm64-v8a") -> "aarch64"
         Build.SUPPORTED_ABIS.contains("armeabi-v7a") -> "arm"
-        else -> "x86_64"
+        Build.SUPPORTED_ABIS.contains("x86_64") -> "x86_64"
+        else -> "x86"
     }
 
     fun toolDownloadUrls(): Map<String, String> = mapOf(
@@ -47,26 +48,27 @@ class ToolchainManager @Inject constructor(
         "Gradle" to "https://services.gradle.org/distributions/gradle-8.10.2-bin.zip",
         "Node.js" to "https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-${arch}.tar.xz",
         "Go" to "https://go.dev/dl/go1.23.3.linux-${arch}.tar.gz",
-        "CMake" to "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-${arch}.tar.gz"
+        "CMake" to "https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-${arch}.tar.gz",
+        "Python" to "https://github.com/indygreg/python-build-standalone/releases/latest/download/cpython-3.12.7+20241016-${arch}-unknown-linux-gnu-install_only.tar.gz",
+        "Maven" to "https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz",
+        "Git" to "https://www.kernel.org/pub/software/scm/git/git-2.47.0.tar.gz",
+        "Rust" to "https://static.rust-lang.org/dist/rust-1.82.0-${arch}-unknown-linux-gnu.tar.gz"
     )
 
     suspend fun detectAll(): List<ToolchainItemEntity> = withContext(Dispatchers.IO) {
-        val envChecks = listOf(
-            "JDK" to System.getenv("JAVA_HOME"),
-            "Gradle" to System.getenv("GRADLE_HOME"),
-            "Node.js" to System.getenv("NODE_HOME"),
-            "Python" to System.getenv("PYTHON_HOME"),
-            "Go" to System.getenv("GOROOT"),
-            "CMake" to System.getenv("CMAKE_HOME")
-        )
-        val tools = envChecks.map { (name, path) ->
+        val tools = toolDownloadUrls().map { (name, url) ->
+            val existing = toolchainDao.getByName(name)
+            val installedDir = File(rootDir, name.lowercase().replace(" ", "_"))
+            val isInstalled = existing?.status == ToolStatus.INSTALLED.name ||
+                (installedDir.exists() && installedDir.listFiles()?.isNotEmpty() == true)
+
             ToolchainItemEntity(
                 toolName = name,
-                version = null,
-                path = path,
-                status = if (path.isNullOrBlank()) ToolStatus.NOT_INSTALLED.name else ToolStatus.INSTALLED.name,
-                downloadUrl = toolDownloadUrls()[name],
-                checksum = null,
+                version = existing?.version,
+                path = if (isInstalled) installedDir.absolutePath else existing?.path,
+                status = if (isInstalled) ToolStatus.INSTALLED.name else ToolStatus.NOT_INSTALLED.name,
+                downloadUrl = url,
+                checksum = existing?.checksum,
                 updatedAt = System.currentTimeMillis()
             )
         }
