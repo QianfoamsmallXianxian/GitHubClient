@@ -83,6 +83,19 @@ class ToolchainManager @Inject constructor(
         destDir.mkdirs()
         val archiveFile = File(destDir, "archive_${System.currentTimeMillis()}")
 
+        // 更新工具状态为 DOWNLOADING，UI 会立即显示进度
+        toolchainDao.upsert(
+            ToolchainItemEntity(
+                toolName = toolName,
+                version = null,
+                path = destDir.absolutePath,
+                status = ToolStatus.DOWNLOADING.name,
+                downloadUrl = url,
+                checksum = null,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+
         val taskId = downloadTaskDao.upsert(
             DownloadTaskEntity(
                 toolName = toolName,
@@ -100,10 +113,12 @@ class ToolchainManager @Inject constructor(
                 val request = Request.Builder().url(url).build()
                 okHttpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
+                        toolchainDao.upsert(ToolchainItemEntity(toolName, null, destDir.absolutePath, ToolStatus.FAILED.name, url, null, System.currentTimeMillis()))
                         downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
                         return@use
                     }
                     val body = response.body ?: run {
+                        toolchainDao.upsert(ToolchainItemEntity(toolName, null, destDir.absolutePath, ToolStatus.FAILED.name, url, null, System.currentTimeMillis()))
                         downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
                         return@use
                     }
@@ -138,6 +153,7 @@ class ToolchainManager @Inject constructor(
                     archiveFile.delete()
                 }
             } catch (e: Exception) {
+                toolchainDao.upsert(ToolchainItemEntity(toolName, null, destDir.absolutePath, ToolStatus.FAILED.name, url, null, System.currentTimeMillis()))
                 downloadTaskDao.updateProgress(taskId, 0, ToolStatus.FAILED.name)
                 archiveFile.delete()
             }
