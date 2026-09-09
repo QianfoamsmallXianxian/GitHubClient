@@ -187,7 +187,7 @@ data class CreateRepoRequest(
     val name: String,
     val description: String? = null,
     @kotlinx.serialization.SerialName("private")
-    val private: Boolean = false,
+    val isPrivate: Boolean = false,
     @kotlinx.serialization.SerialName("auto_init")
     val autoInit: Boolean = false
 )
