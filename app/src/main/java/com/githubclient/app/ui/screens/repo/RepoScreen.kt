@@ -12,11 +12,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Issue
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -142,7 +142,7 @@ private fun RepoHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 StatChip(Icons.Default.Star, repo.stars.toString())
-                StatChip(Icons.Default.Issue, repo.openIssues.toString())
+                StatChip(Icons.Default.BugReport, repo.openIssues.toString())
                 repo.language?.let { StatChip(Icons.Default.Code, it) }
             }
             Row(
@@ -172,7 +172,7 @@ private fun ContentRow(item: RepoContent, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        val icon = if (item.type == "dir") Icons.AutoMirrored.Filled.Folder else Icons.AutoMirrored.Filled.Description
+        val icon = if (item.type == "dir") Icons.Default.Folder else Icons.Default.InsertDriveFile
         Icon(icon, contentDescription = null, tint = if (item.type == "dir") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(item.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (item.type == "file") item.size?.let { Text("${it}B", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
