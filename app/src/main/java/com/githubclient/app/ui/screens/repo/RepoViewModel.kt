@@ -98,7 +98,6 @@ class RepoViewModel @Inject constructor(
         name: String,
         path: String,
         content: String,
-        sha: String?,
         branch: String? = null
     ) {
         viewModelScope.launch {
@@ -110,7 +109,6 @@ class RepoViewModel @Inject constructor(
                     content = content,
                     message = "edit $path",
                     branch = branch,
-                    sha = sha
                 )
                 _message.value = "文件已保存"
                 loadContents(owner, name, path.substringBeforeLast('/', ""))
