@@ -1,6 +1,7 @@
 package com.githubclient.app.data.auth
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,6 +19,7 @@ import java.security.SecureRandom
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Singleton
+import timber.log.Timber
 
 sealed interface OAuthState {
     data object Idle : OAuthState
@@ -60,10 +62,27 @@ class OAuthManager @Inject constructor(
             .appendQueryParameter("code_challenge_method", "S256")
             .build()
 
-        withContext(Dispatchers.Main) {
-            CustomTabsIntent.Builder()
-                .build()
-                .launchUrl(context, authUrl)
+        val launched = withContext(Dispatchers.Main) {
+            try {
+                CustomTabsIntent.Builder().build().launchUrl(context, authUrl)
+                true
+            } catch (e: Exception) {
+                Timber.e(e, "CustomTabs launch failed")
+                false
+            }
+        }
+
+        if (!launched) {
+            withContext(Dispatchers.Main) {
+                try {
+                    val fallback = Intent(Intent.ACTION_VIEW, authUrl)
+                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(fallback)
+                } catch (e: Exception) {
+                    Timber.e(e, "Fallback browser launch failed")
+                    _oauthState.value = OAuthState.Error("无法打开浏览器，请安装浏览器后重试")
+                }
+            }
         }
     }
 
@@ -111,9 +130,7 @@ class OAuthManager @Inject constructor(
                 .build()
 
             okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IllegalStateException("HTTP ${response.code}")
-                }
+                if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
                 val json = JSONObject(response.body?.string() ?: "{}")
                 val token = json.optString("access_token")
                 if (token.isBlank()) {
