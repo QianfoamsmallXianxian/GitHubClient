@@ -30,19 +30,38 @@ class LoginViewModel @Inject constructor(
     private val _state = MutableStateFlow<LoginState>(LoginState.Idle)
     val state: StateFlow<LoginState> = _state
 
+    private val _isFetchingToken = MutableStateFlow(false)
+    val isFetchingToken: StateFlow<Boolean> = _isFetchingToken
+
     init {
         oauthManager.oauthState.onEach { oauthState ->
             when (oauthState) {
-                is OAuthState.Success -> _state.value = LoginState.Success
-                is OAuthState.Error -> _state.value = LoginState.Error(oauthState.message)
-                is OAuthState.Launching -> _state.value = LoginState.Loading
+                is OAuthState.Success -> {
+                    _isFetchingToken.value = false
+                    _state.value = LoginState.Success
+                }
+                is OAuthState.Error -> {
+                    _isFetchingToken.value = false
+                    _state.value = LoginState.Error(oauthState.message)
+                }
+                is OAuthState.Launching -> {
+                    _isFetchingToken.value = true
+                    _state.value = LoginState.Loading
+                }
                 OAuthState.Idle -> Unit
             }
         }.launchIn(viewModelScope)
 
-        // 已有有效 Token 时自动登录，避免后台划掉后重新进入要求登录
+        // 自动登录
         if (tokenManager.hasToken()) {
             _state.value = LoginState.Success
+        }
+    }
+
+    fun startOAuthTokenFetch() {
+        viewModelScope.launch {
+            _state.value = LoginState.Loading
+            oauthManager.startOAuthFlow()
         }
     }
 
@@ -69,6 +88,7 @@ class LoginViewModel @Inject constructor(
 
     fun reset() {
         _state.value = LoginState.Idle
+        _isFetchingToken.value = false
         oauthManager.reset()
     }
 }
