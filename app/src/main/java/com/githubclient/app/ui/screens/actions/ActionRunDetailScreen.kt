@@ -2,6 +2,7 @@ package com.githubclient.app.ui.screens.actions
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -35,13 +37,14 @@ fun ActionRunDetailScreen(
 ) {
     val log by viewModel.log.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val progress by viewModel.progress.collectAsState()
 
     LaunchedEffect(owner, name, runId) { viewModel.load(owner, name, runId) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Run #$runId 日志") },
+                title = { Text("Run #$runId 详情") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 },
@@ -56,6 +59,26 @@ fun ActionRunDetailScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            progress?.let { p ->
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    LinearProgressIndicator(
+                        progress = { p.percent / 100f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${p.percent}%  ${p.statusText}",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        p.etaText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
             if (isLoading && log == null) {
                 LoadingState()
             } else {
