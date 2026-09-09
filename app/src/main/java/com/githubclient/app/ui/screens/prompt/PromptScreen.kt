@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -71,6 +72,24 @@ fun PromptScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Text("使用说明", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 8.dp))
+                    }
+                    Text("1. 「提示词 / 需求描述」：用自然语言写下你想做什么，例如：列出当前目录文件。", style = MaterialTheme.typography.bodySmall)
+                    Text("2. 「要执行的命令」：填写实际要运行的命令，例如 ls -la。提示词只是记录，实际执行的是命令。", style = MaterialTheme.typography.bodySmall)
+                    Text("3. 勾选「优先使用 Termux」时，会尝试在 Termux 中执行；不勾选则使用应用内 shell。", style = MaterialTheme.typography.bodySmall)
+                    Text("4. 结果会保存到输出目录中的 txt 文件。", style = MaterialTheme.typography.bodySmall)
+                    Text("注意：本功能不是 AI 自动改代码，提示词不会自动变成命令。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+
             Text(
                 text = "通过提示词驱动代码/文件处理",
                 style = MaterialTheme.typography.titleMedium
