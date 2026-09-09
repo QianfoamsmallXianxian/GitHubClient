@@ -1,5 +1,4 @@
 package com.githubclient.app.ui.screens.issues
-import androidx.compose.material.icons.filled.BugReport
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,7 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -92,7 +91,7 @@ private fun IssueCard(issue: Issue, onClick: () -> Unit) {
             verticalAlignment = Alignment.Top
         ) {
             Icon(
-                if (issue.state == "open") Icons.Default.Info else Icons.Default.CheckCircle,
+                if (issue.state == "open") Icons.Default.BugReport else Icons.Default.CheckCircle,
                 contentDescription = null,
                 tint = if (issue.state == "open") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
