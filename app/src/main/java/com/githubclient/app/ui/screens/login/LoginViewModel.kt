@@ -39,6 +39,11 @@ class LoginViewModel @Inject constructor(
                 OAuthState.Idle -> Unit
             }
         }.launchIn(viewModelScope)
+
+        // 已有有效 Token 时自动登录，避免后台划掉后重新进入要求登录
+        if (tokenManager.hasToken()) {
+            _state.value = LoginState.Success
+        }
     }
 
     fun startOAuth() {
