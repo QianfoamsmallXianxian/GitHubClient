@@ -37,11 +37,34 @@ class TokenManager @Inject constructor(
 
     fun getToken(): String? = prefs.getString(KEY_TOKEN, null)
 
+    /** 返回脱敏后的 token，只显示前 8 位，用于界面展示 */
+    fun getMaskedToken(): String {
+        val token = getToken() ?: return "未登录"
+        if (token.length <= 8) return "$token***"
+        return token.take(8) + "****" + token.takeLast(4)
+    }
+
+    fun getTokenType(): String {
+        val token = getToken() ?: return "无"
+        return when {
+            token.startsWith("ghp_") -> "Classic PAT"
+            token.startsWith("github_pat_") -> "Fine-grained PAT"
+            token.startsWith("gho_") -> "OAuth Token"
+            else -> "Token"
+        }
+    }
+
     fun clearToken() {
         prefs.edit().remove(KEY_TOKEN).apply()
     }
 
     fun hasToken(): Boolean = getToken().isNullOrBlank().not()
+
+    /** 退出登录：清除所有登录态 */
+    fun logout() {
+        clearToken()
+        prefs.edit().clear().apply()
+    }
 
     companion object {
         private const val KEY_TOKEN = "github_access_token"
