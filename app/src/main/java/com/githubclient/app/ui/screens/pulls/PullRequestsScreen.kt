@@ -13,7 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -89,7 +89,7 @@ private fun PullRequestCard(pr: PullRequest, onClick: () -> Unit) {
             verticalAlignment = Alignment.Top
         ) {
             Icon(
-                if (pr.merged) Icons.Default.CheckCircle else Icons.Default.Code,
+                if (pr.merged) Icons.Default.CheckCircle else Icons.Default.CallSplit,
                 contentDescription = null,
                 tint = if (pr.state == "open") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
