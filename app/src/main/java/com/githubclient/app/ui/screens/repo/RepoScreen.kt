@@ -13,14 +13,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,7 +49,6 @@ import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.ui.components.EmptyState
 import com.githubclient.app.ui.components.LoadingState
-import com.githubclient.app.ui.components.SectionHeader
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +60,7 @@ fun RepoScreen(
     onOpenIssues: () -> Unit,
     onOpenPulls: () -> Unit,
     onOpenReleases: () -> Unit,
+    onDeleted: () -> Unit = {},
     viewModel: RepoViewModel = hiltViewModel()
 ) {
     val repo by viewModel.repo.collectAsState()
@@ -66,6 +68,7 @@ fun RepoScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(owner, name) { viewModel.loadRepo(owner, name) }
     LaunchedEffect(owner, name, currentPath) { viewModel.loadContents(owner, name, currentPath) }
@@ -82,9 +85,12 @@ fun RepoScreen(
                     }
                 },
                 actions = {
-                    Button(onClick = onOpenActions, modifier = Modifier.padding(end = 8.dp)) {
+                    Button(onClick = onOpenActions, modifier = Modifier.padding(end = 4.dp)) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Text("Actions")
+                    }
+                    IconButton(onClick = { showDeleteDialog = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "删除仓库", tint = MaterialTheme.colorScheme.error)
                     }
                 }
             )
@@ -95,7 +101,7 @@ fun RepoScreen(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             repo?.let { item(key = "header") { RepoHeader(it, onOpenIssues, onOpenPulls, onOpenReleases) } }
-            item(key = "files_header") { SectionHeader("文件") }
+            item(key = "files_header") { androidx.compose.material3.Text("文件", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall) }
             if (isLoading && contents.isEmpty()) {
                 item(key = "loading") { LoadingState() }
             } else if (contents.isEmpty()) {
@@ -119,6 +125,24 @@ fun RepoScreen(
 
     selectedFile?.let { file ->
         FileContentDialog(owner, name, file, { selectedFile = null }, viewModel)
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("删除仓库") },
+            text = { Text("确定要删除 $owner/$name 吗？此操作不可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteRepository(owner, name)
+                    showDeleteDialog = false
+                    onDeleted()
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+            }
+        )
     }
 }
 
@@ -158,7 +182,7 @@ private fun RepoHeader(
             ) {
                 Button(onClick = onOpenIssues) { Icon(Icons.Default.BugReport, contentDescription = null); Text("Issues") }
                 Button(onClick = onOpenPulls) { Icon(Icons.Default.CallSplit, contentDescription = null); Text("PRs") }
-                Button(onClick = onOpenReleases) { Icon(Icons.Default.Info, contentDescription = null); Text("Releases") }
+                Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
             }
         }
     }
