@@ -21,6 +21,7 @@ import javax.inject.Inject
 sealed interface ZipUploadState {
     data object Idle : ZipUploadState
     data object Loading : ZipUploadState
+    data class Extracting(val current: Int, val total: Int, val currentFile: String) : ZipUploadState
     data class Progress(val done: Int, val total: Int, val currentFile: String) : ZipUploadState
     data class Success(val uploaded: Int, val failed: Int, val details: List<String>) : ZipUploadState
     data class Error(val message: String) : ZipUploadState
@@ -52,7 +53,7 @@ class ZipUploadViewModel @Inject constructor(
             try {
                 val cleanOwner = owner.trim().substringBefore('/').ifBlank { return@launch }
                 val files = withContext(Dispatchers.IO) {
-                    stripCommonRoot(extractTextFilesFast(zipBytes))
+                    extractTextFilesWithProgress(zipBytes)
                 }
                 if (files.isEmpty()) {
                     _state.value = ZipUploadState.Error("ZIP 中没有找到可上传的文本源码文件")
@@ -111,27 +112,34 @@ class ZipUploadViewModel @Inject constructor(
         }
     }
 
-    private fun extractTextFilesFast(zipBytes: ByteArray): Map<String, String> {
+    private fun extractTextFilesWithProgress(zipBytes: ByteArray): Map<String, String> {
         val tempFile = File.createTempFile("src_upload", ".zip")
         try {
             FileOutputStream(tempFile).use { it.write(zipBytes) }
             val files = linkedMapOf<String, String>()
             ZipFile.builder().setFile(tempFile).get().use { zip ->
                 val entries = zip.entries
+                val allEntries = mutableListOf<org.apache.commons.compress.archivers.zip.ZipArchiveEntry>()
                 while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
+                    allEntries.add(entries.nextElement())
+                }
+                val totalEntries = allEntries.size
+                var current = 0
+                for (entry in allEntries) {
+                    current++
                     if (entry.isDirectory) continue
                     val path = entry.name.replace('\\', '/').trimStart('/')
                     val ext = path.substringAfterLast('.', "").lowercase()
                     val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
                     if (ext in textExtensions || isGitignore) {
+                        _state.value = ZipUploadState.Extracting(current, totalEntries, path)
                         zip.getInputStream(entry).use { input ->
                             files[path] = input.readBytes().toString(Charsets.UTF_8)
                         }
                     }
                 }
             }
-            return files
+            return stripCommonRoot(files)
         } finally {
             tempFile.delete()
         }
