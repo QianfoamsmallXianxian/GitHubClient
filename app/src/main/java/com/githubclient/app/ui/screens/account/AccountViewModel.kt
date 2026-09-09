@@ -2,8 +2,8 @@ package com.githubclient.app.ui.screens.account
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.githubclient.app.data.auth.GitHubAccount
 import com.githubclient.app.data.auth.TokenManager
-import com.githubclient.app.data.model.User
 import com.githubclient.app.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,42 +13,48 @@ import javax.inject.Inject
 
 @HiltViewModel
 class AccountViewModel @Inject constructor(
-    private val repository: GitHubRepository,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    private val repository: GitHubRepository
 ) : ViewModel() {
+    private val _accounts = MutableStateFlow<List<GitHubAccount>>(emptyList())
+    val accounts: StateFlow<List<GitHubAccount>> = _accounts
 
-    private val _user = MutableStateFlow<User?>(null)
-    val user: StateFlow<User?> = _user
-
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error
-
-    val tokenType: String get() = tokenManager.getTokenType()
-    val maskedToken: String get() = tokenManager.getMaskedToken()
+    private val _activeLogin = MutableStateFlow<String?>(null)
+    val activeLogin: StateFlow<String?> = _activeLogin
 
     init {
-        loadUser()
+        refresh()
     }
 
-    fun loadUser() {
+    fun refresh() {
+        _accounts.value = tokenManager.getAccounts()
+        _activeLogin.value = tokenManager.getActiveLogin()
+    }
+
+    fun addAccount(token: String, login: String) {
         viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
-            try {
-                _user.value = repository.getCurrentUser()
-            } catch (e: Exception) {
-                _error.value = e.message ?: "加载账号信息失败"
-            } finally {
-                _isLoading.value = false
+            val finalLogin = login.ifBlank {
+                runCatching { repository.getCurrentUser().login }.getOrNull() ?: "unknown"
             }
+            val avatar = runCatching { repository.getCurrentUser().avatarUrl }.getOrNull()
+            tokenManager.addAccount(token = token, login = finalLogin, avatarUrl = avatar)
+            refresh()
         }
     }
 
-    fun logout() {
-        tokenManager.logout()
-        _user.value = null
+    fun switchAccount(login: String) {
+        tokenManager.switchAccount(login)
+        refresh()
+    }
+
+    fun deleteAccount(login: String) {
+        tokenManager.deleteAccount(login)
+        refresh()
+    }
+
+    fun saveAvatar(uri: String) {
+        val login = tokenManager.getActiveLogin() ?: return
+        tokenManager.updateAvatar(login, uri)
+        refresh()
     }
 }
