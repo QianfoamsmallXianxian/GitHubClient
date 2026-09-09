@@ -67,6 +67,9 @@ class GitHubRepository @Inject constructor(
     suspend fun rerunRun(owner: String, name: String, runId: Long) =
         api.rerunWorkflowRun(owner, name, runId)
 
+    suspend fun deleteRun(owner: String, name: String, runId: Long) =
+        api.deleteWorkflowRun(owner, name, runId)
+
     suspend fun searchRepositories(query: String, page: Int = 1) =
         api.searchRepositories(query, page)
 
