@@ -1,7 +1,5 @@
 package com.githubclient.app.ui.screens.account
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,31 +10,41 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.githubclient.app.data.model.User
-import com.githubclient.app.ui.components.LoadingState
+import coil.compose.AsyncImage
+import com.githubclient.app.data.auth.GitHubAccount
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,100 +53,137 @@ fun AccountScreen(
     onLogout: () -> Unit,
     onOpenCreateRepo: () -> Unit,
     onOpenRepositories: () -> Unit,
+    onOpenTokenSettings: () -> Unit,
     viewModel: AccountViewModel = hiltViewModel()
 ) {
-    val user by viewModel.user.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val context = LocalContext.current
+    val accounts by viewModel.accounts.collectAsState()
+    val activeLogin by viewModel.activeLogin.collectAsState()
+    var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("账号") },
+                title = { Text("账号管理") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::loadUser) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
-                    }
+                    IconButton(onClick = { showAddDialog = true }) { Icon(Icons.Default.Add, contentDescription = "添加账号") }
                 }
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (isLoading) LoadingState()
-            error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            user?.let { u -> UserCard(u) }
-            Text("令牌：${viewModel.maskedToken}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("类型：${viewModel.tokenType}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-            AccountMenuItem("创建新仓库", onClick = onOpenCreateRepo)
-            AccountMenuItem("仓库列表", onClick = onOpenRepositories)
-            AccountMenuItem("星标", onClick = { openUrl(context, "https://github.com/${user?.login ?: ""}?tab=stars") })
-            AccountMenuItem("代码片段", onClick = { openUrl(context, "https://gist.github.com/${user?.login ?: ""}") })
-            AccountMenuItem("组织", onClick = { openUrl(context, "https://github.com/settings/organizations") })
-            AccountMenuItem("赞助", onClick = { openUrl(context, "https://github.com/sponsors") })
-            AccountMenuItem("获取令牌", onClick = { openUrl(context, "https://github.com/settings/tokens") })
-            AccountMenuItem(
-                "退出登录",
-                onClick = { viewModel.logout(); onLogout() },
-                tint = MaterialTheme.colorScheme.error
-            )
-        }
-    }
-}
-
-private fun openUrl(context: android.content.Context, url: String) {
-    runCatching {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        context.startActivity(intent)
-    }
-}
-
-@Composable
-private fun UserCard(u: User) {
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(8.dp))
-            Text(u.name ?: u.login, style = MaterialTheme.typography.titleLarge)
-            Text("@${u.login}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            u.bio?.let { Spacer(Modifier.height(4.dp)); Text(it, style = MaterialTheme.typography.bodySmall) }
-            Spacer(Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                AccountStat("仓库", u.publicRepos?.toString() ?: "-")
-                AccountStat("关注者", u.followers?.toString() ?: "-")
-                AccountStat("关注中", u.following?.toString() ?: "-")
+            items(accounts, key = { it.login }) { account ->
+                AccountCard(
+                    account = account,
+                    isActive = account.login == activeLogin,
+                    onSwitch = { viewModel.switchAccount(account.login) },
+                    onDelete = { viewModel.deleteAccount(account.login) }
+                )
+            }
+            item(key = "actions") {
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onOpenCreateRepo, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text("创建仓库")
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onOpenTokenSettings, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Settings, contentDescription = null)
+                    Text("Token 设置")
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.AccountCircle, contentDescription = null)
+                    Text("退出登录")
+                }
             }
         }
     }
-}
 
-@Composable
-private fun AccountStat(label: String, value: String) {
-    Column {
-        Text(value, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (showAddDialog) {
+        AddAccountDialog(
+            onDismiss = { showAddDialog = false },
+            onAdd = { token, login ->
+                viewModel.addAccount(token, login)
+                showAddDialog = false
+            }
+        )
     }
 }
 
 @Composable
-private fun AccountMenuItem(title: String, onClick: () -> Unit, tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.bodyLarge,
-        color = tint,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp)
+private fun AccountCard(
+    account: GitHubAccount,
+    isActive: Boolean,
+    onSwitch: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onSwitch).padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (account.avatarUrl.isNullOrBlank()) {
+                Icon(
+                    Icons.Default.AccountCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(44.dp).clip(CircleShape),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                AsyncImage(
+                    model = account.avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(44.dp).clip(CircleShape)
+                )
+            }
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(account.login, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (isActive) "当前账号" else "点击切换",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "删除账号", tint = MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+
+@Composable
+private fun AddAccountDialog(
+    onDismiss: () -> Unit,
+    onAdd: (String, String) -> Unit
+) {
+    var token by remember { mutableStateOf("") }
+    var login by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加账号") },
+        text = {
+            Column {
+                OutlinedTextField(value = token, onValueChange = { token = it }, label = { Text("GitHub Token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = login, onValueChange = { login = it }, label = { Text("用户名(可选)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onAdd(token.trim(), login.trim()) }, enabled = token.isNotBlank()) { Text("添加") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
     )
 }
