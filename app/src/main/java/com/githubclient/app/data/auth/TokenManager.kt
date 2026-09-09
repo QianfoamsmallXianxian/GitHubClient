@@ -2,42 +2,104 @@ package com.githubclient.app.data.auth
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
-import timber.log.Timber
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
+
+@Serializable
+data class GitHubAccount(
+    val login: String,
+    val token: String,
+    val avatarUrl: String? = null,
+    val nickname: String? = null
+)
 
 @Singleton
 class TokenManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
     private val prefs: SharedPreferences by lazy {
-        try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                "token.xml",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            Timber.e(e, "EncryptedSharedPreferences init failed, fallback to normal prefs")
-            context.getSharedPreferences("token_plain.xml", Context.MODE_PRIVATE)
+        context.getSharedPreferences("github_accounts.xml", Context.MODE_PRIVATE)
+    }
+
+    private val accounts: MutableList<GitHubAccount>
+        get() {
+            val raw = prefs.getString(KEY_ACCOUNTS, null) ?: return mutableListOf()
+            return runCatching {
+                json.decodeFromString<List<GitHubAccount>>(raw).toMutableList()
+            }.getOrElse { mutableListOf() }
+        }
+
+    private fun saveAccounts(list: List<GitHubAccount>) {
+        prefs.edit().putString(KEY_ACCOUNTS, json.encodeToString(list)).apply()
+    }
+
+    fun getAccounts(): List<GitHubAccount> = accounts
+
+    fun getActiveLogin(): String? = prefs.getString(KEY_ACTIVE_LOGIN, null)
+
+    fun getActiveAccount(): GitHubAccount? {
+        val login = getActiveLogin() ?: return null
+        return accounts.firstOrNull { it.login == login }
+    }
+
+    fun saveAccount(account: GitHubAccount) {
+        val list = accounts
+        val idx = list.indexOfFirst { it.login == account.login }
+        if (idx >= 0) list[idx] = account else list.add(account)
+        saveAccounts(list)
+        setActiveAccount(account.login)
+    }
+
+    fun addAccount(token: String, login: String, avatarUrl: String? = null, nickname: String? = null) {
+        saveAccount(GitHubAccount(login = login, token = token, avatarUrl = avatarUrl, nickname = nickname))
+    }
+
+    fun setActiveAccount(login: String) {
+        prefs.edit().putString(KEY_ACTIVE_LOGIN, login).apply()
+    }
+
+    fun deleteAccount(login: String) {
+        val list = accounts.filterNot { it.login == login }
+        saveAccounts(list)
+        if (getActiveLogin() == login) {
+            prefs.edit().remove(KEY_ACTIVE_LOGIN).apply()
+            list.firstOrNull()?.let { setActiveAccount(it.login) }
         }
     }
 
-    fun saveToken(token: String) {
-        prefs.edit().putString(KEY_TOKEN, token).apply()
+    fun updateAvatar(login: String, avatarUrl: String?) {
+        val list = accounts
+        val idx = list.indexOfFirst { it.login == login }
+        if (idx >= 0) {
+            list[idx] = list[idx].copy(avatarUrl = avatarUrl)
+            saveAccounts(list)
+        }
     }
 
-    fun getToken(): String? = prefs.getString(KEY_TOKEN, null)
+    fun switchAccount(login: String) {
+        if (accounts.any { it.login == login }) {
+            setActiveAccount(login)
+        }
+    }
 
-    /** 返回脱敏后的 token，只显示前 8 位，用于界面展示 */
+    // 兼容旧接口
+    fun saveToken(token: String) {
+        val account = getActiveAccount()
+        if (account != null) {
+            saveAccount(account.copy(token = token))
+        } else {
+            addAccount(token = token, login = "default")
+        }
+    }
+
+    fun getToken(): String? = getActiveAccount()?.token
+
     fun getMaskedToken(): String {
         val token = getToken() ?: return "未登录"
         if (token.length <= 8) return "$token***"
@@ -55,18 +117,18 @@ class TokenManager @Inject constructor(
     }
 
     fun clearToken() {
-        prefs.edit().remove(KEY_TOKEN).apply()
+        val account = getActiveAccount() ?: return
+        saveAccount(account.copy(token = ""))
     }
 
-    fun hasToken(): Boolean = getToken().isNullOrBlank().not()
+    fun hasToken(): Boolean = !getToken().isNullOrBlank()
 
-    /** 退出登录：清除所有登录态 */
     fun logout() {
-        clearToken()
-        prefs.edit().clear().apply()
+        getActiveLogin()?.let { deleteAccount(it) }
     }
 
     companion object {
-        private const val KEY_TOKEN = "github_access_token"
+        private const val KEY_ACCOUNTS = "github_accounts"
+        private const val KEY_ACTIVE_LOGIN = "github_active_login"
     }
 }
