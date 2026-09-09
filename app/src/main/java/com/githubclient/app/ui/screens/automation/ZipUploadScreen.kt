@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,7 +80,7 @@ fun ZipUploadScreen(
             }
             Spacer(Modifier.height(12.dp))
 
-            androidx.compose.foundation.layout.Row(
+            Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -88,7 +89,7 @@ fun ZipUploadScreen(
             }
             Spacer(Modifier.height(16.dp))
 
-            val isUploading = state is ZipUploadState.Loading || state is ZipUploadState.Progress
+            val isUploading = state is ZipUploadState.Loading || state is ZipUploadState.Extracting || state is ZipUploadState.Progress
             Button(
                 onClick = {
                     val uri = zipUri
@@ -110,6 +111,15 @@ fun ZipUploadScreen(
             }
 
             when (val s = state) {
+                is ZipUploadState.Extracting -> {
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { if (s.total == 0) 0f else s.current.toFloat() / s.total },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("解压中 ${s.current}/${s.total}  ${s.currentFile}", style = MaterialTheme.typography.bodySmall)
+                }
                 is ZipUploadState.Progress -> {
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(
@@ -117,7 +127,7 @@ fun ZipUploadScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text("${s.done}/${s.total}  ${s.currentFile}", style = MaterialTheme.typography.bodySmall)
+                    Text("上传中 ${s.done}/${s.total}  ${s.currentFile}", style = MaterialTheme.typography.bodySmall)
                 }
                 is ZipUploadState.Success -> {
                     Spacer(Modifier.height(12.dp))
