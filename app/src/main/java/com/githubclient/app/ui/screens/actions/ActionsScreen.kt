@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
@@ -88,7 +89,8 @@ fun ActionsScreen(
                             run = run,
                             onOpen = { onOpenRun(run.id) },
                             onCancel = { viewModel.cancelRun(owner, name, run.id) },
-                            onRerun = { viewModel.rerunRun(owner, name, run.id) }
+                            onRerun = { viewModel.rerunRun(owner, name, run.id) },
+                            onDelete = { viewModel.deleteRun(owner, name, run.id) }
                         )
                     }
                 }
@@ -102,7 +104,8 @@ private fun RunCard(
     run: WorkflowRun,
     onOpen: () -> Unit,
     onCancel: () -> Unit,
-    onRerun: () -> Unit
+    onRerun: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -122,19 +125,20 @@ private fun RunCard(
                 }
                 StatusIcon(run)
             }
-            if (run.status == "in_progress" || run.status == "queued") {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (run.status == "in_progress" || run.status == "queued") {
                     TextButton(onClick = onCancel) { Text("取消") }
                 }
-            } else if (run.status == "completed" && run.conclusion == "failure") {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
+                if (run.status == "completed" && run.conclusion == "failure") {
                     TextButton(onClick = onRerun) { Text("重跑") }
+                }
+                TextButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text("删除")
                 }
             }
         }
