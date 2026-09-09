@@ -7,12 +7,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,18 +35,26 @@ fun LoginScreen(
     val loginState by viewModel.state.collectAsState()
 
     LaunchedEffect(loginState) {
-        if (loginState is LoginState.Success) onLoginSuccess()
+        if (loginState is LoginState.Success) {
+            onLoginSuccess()
+        }
     }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("GitHub Client", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+        Text(
+            text = "GitHub Client",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
         Spacer(Modifier.height(8.dp))
         Text(
-            "登录以访问仓库与 Actions",
+            text = "登录以访问你的仓库与 Actions",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -55,15 +63,26 @@ fun LoginScreen(
 
         Button(
             onClick = { viewModel.startOAuth() },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = loginState !is LoginState.Loading
+            enabled = loginState !is LoginState.Loading,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text("使用 GitHub 账号登录")
+            if (loginState is LoginState.Loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("使用 GitHub 账号登录")
+            }
         }
 
         Spacer(Modifier.height(24.dp))
 
-        Text("或使用 Token", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = "或使用 Token",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.height(8.dp))
 
         OutlinedTextField(
@@ -81,15 +100,11 @@ fun LoginScreen(
             enabled = pat.isNotBlank() && loginState !is LoginState.Loading,
             modifier = Modifier.fillMaxWidth()
         ) {
-            if (loginState is LoginState.Loading) {
-                CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
-            } else {
-                Text("使用令牌登录")
-            }
+            Text("使用令牌登录")
         }
 
         if (loginState is LoginState.Error) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             Text(
                 text = (loginState as LoginState.Error).message,
                 color = MaterialTheme.colorScheme.error,
