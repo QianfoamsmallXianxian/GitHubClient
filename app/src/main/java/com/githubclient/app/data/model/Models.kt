@@ -154,3 +154,11 @@ data class CommitAuthor(
     val email: String? = null,
     val date: String? = null
 )
+
+@kotlinx.serialization.Serializable
+data class WorkflowListResponse(
+    @kotlinx.serialization.SerialName("total_count")
+    val totalCount: Int,
+    @kotlinx.serialization.SerialName("workflows")
+    val workflows: List<Workflow>
+)
