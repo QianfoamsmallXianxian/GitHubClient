@@ -3,7 +3,9 @@ package com.githubclient.app.data.repository
 import com.githubclient.app.data.local.RepoCacheDao
 import com.githubclient.app.data.local.RepoCacheEntity
 import com.githubclient.app.data.model.Repository
+import com.githubclient.app.data.model.WorkflowJobsResponse
 import com.githubclient.app.data.model.WorkflowListResponse
+import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.remote.GitHubApi
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
@@ -58,6 +60,12 @@ class GitHubRepository @Inject constructor(
 
     suspend fun getWorkflowRuns(owner: String, name: String) =
         api.getWorkflowRuns(owner, name)
+
+    suspend fun getWorkflowRun(owner: String, name: String, runId: Long): WorkflowRun =
+        api.getWorkflowRun(owner, name, runId)
+
+    suspend fun getWorkflowJobs(owner: String, name: String, runId: Long): WorkflowJobsResponse =
+        api.getWorkflowJobs(owner, name, runId)
 
     suspend fun dispatchWorkflow(owner: String, name: String, workflowId: Long, ref: String, inputs: Map<String, String>? = null) =
         api.dispatchWorkflow(owner, name, workflowId, com.githubclient.app.data.remote.DispatchWorkflowRequest(ref, inputs))
