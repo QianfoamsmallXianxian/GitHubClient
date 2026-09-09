@@ -11,6 +11,7 @@ import com.githubclient.app.data.model.SearchUsersResponse
 import com.githubclient.app.data.model.User
 import com.githubclient.app.data.model.Workflow
 import com.githubclient.app.data.model.WorkflowRun
+import com.githubclient.app.data.model.WorkflowJobsResponse
 import com.githubclient.app.data.model.WorkflowListResponse
 import com.githubclient.app.data.model.WorkflowRunsResponse
 import retrofit2.http.Body
@@ -114,6 +115,20 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Query("per_page") perPage: Int = 30
     ): WorkflowRunsResponse
+
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}")
+    suspend fun getWorkflowRun(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long
+    ): WorkflowRun
+
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}/jobs")
+    suspend fun getWorkflowJobs(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long
+    ): WorkflowJobsResponse
 
     @GET("repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs")
     suspend fun getWorkflowRunsByWorkflow(
