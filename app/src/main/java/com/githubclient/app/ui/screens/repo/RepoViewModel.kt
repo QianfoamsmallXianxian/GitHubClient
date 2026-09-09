@@ -1,5 +1,6 @@
 package com.githubclient.app.ui.screens.repo
 
+import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.model.RepoContent
@@ -71,11 +72,17 @@ class RepoViewModel @Inject constructor(
             _fileContent.value = null
             try {
                 val file = repository.getFileContent(owner, name, path)
-                val downloadUrl = file.downloadUrl
-                if (downloadUrl != null) {
-                    val request = Request.Builder().url(downloadUrl).build()
-                    okHttpClient.newCall(request).execute().use { response ->
-                        _fileContent.value = response.body?.string()
+                val encoded = file.content
+                if (!encoded.isNullOrBlank() && file.encoding == "base64") {
+                    val decoded = Base64.decode(encoded, Base64.DEFAULT)
+                    _fileContent.value = decoded.toString(Charsets.UTF_8)
+                } else {
+                    val downloadUrl = file.downloadUrl
+                    if (downloadUrl != null) {
+                        val request = Request.Builder().url(downloadUrl).build()
+                        okHttpClient.newCall(request).execute().use { response ->
+                            _fileContent.value = response.body?.string()
+                        }
                     }
                 }
             } catch (e: Exception) {
