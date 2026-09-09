@@ -3,6 +3,7 @@ package com.githubclient.app.ui.screens.home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,18 +14,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -50,6 +54,7 @@ fun HomeScreen(
     onOpenAutomation: () -> Unit,
     onOpenTerminal: () -> Unit,
     onOpenPrompt: () -> Unit,
+    onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val repos by viewModel.repos.collectAsState(initial = emptyList())
@@ -62,32 +67,58 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("仓库") },
                 actions = {
-                    IconButton(onClick = onOpenPrompt) {
-                        Icon(Icons.Default.SmartToy, contentDescription = "提示词")
-                    }
-                    IconButton(onClick = onOpenTerminal) {
-                        Icon(Icons.Default.Terminal, contentDescription = "终端")
-                    }
-                    IconButton(onClick = onOpenAutomation) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "自动化")
-                    }
-                    IconButton(onClick = onOpenSearch) {
-                        Icon(Icons.Default.Search, contentDescription = "搜索")
-                    }
-                    IconButton(onClick = onOpenToolchain) {
-                        Icon(Icons.Default.Build, contentDescription = "工具链")
+                    IconButton(onClick = onOpenAccount) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = "账号")
                     }
                 }
             )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenSearch,
+                    icon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
+                    label = { Text("搜索") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenTerminal,
+                    icon = { Icon(Icons.Default.Terminal, contentDescription = "终端") },
+                    label = { Text("终端") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenAutomation,
+                    icon = { Icon(Icons.Default.PlayArrow, contentDescription = "自动化") },
+                    label = { Text("自动化") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenPrompt,
+                    icon = { Icon(Icons.Default.SmartToy, contentDescription = "提示词") },
+                    label = { Text("提示词") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenToolchain,
+                    icon = { Icon(Icons.Default.Build, contentDescription = "工具链") },
+                    label = { Text("工具链") }
+                )
+            }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
             when {
                 isLoading && repos.isEmpty() -> LoadingState()
                 repos.isEmpty() -> EmptyState("暂无仓库，下拉刷新或检查登录")
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(repos, key = { it.id }) { repo ->
@@ -102,7 +133,9 @@ fun HomeScreen(
 @Composable
 private fun RepoCard(repo: RepoCacheEntity, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
