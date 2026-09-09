@@ -15,3 +15,8 @@
 # Room
 -keep class * extends androidx.room.RoomDatabase
 -dontwarn androidx.room.paging.**
+
+# 忽略 R8 缺失类
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn org.tukaani.xz.**
+-dontwarn org.apache.commons.compress.**

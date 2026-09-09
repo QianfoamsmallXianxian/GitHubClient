@@ -106,6 +106,7 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.browser)
     implementation(libs.commons.compress)
+    implementation(libs.xz)
 
     debugImplementation(libs.androidx.ui.tooling)
 }
