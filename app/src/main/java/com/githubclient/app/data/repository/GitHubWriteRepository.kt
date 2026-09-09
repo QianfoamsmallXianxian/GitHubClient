@@ -14,21 +14,27 @@ class GitHubWriteRepository @Inject constructor(
     suspend fun createRepository(name: String, description: String? = null, isPrivate: Boolean = false, autoInit: Boolean = true) =
         api.createRepository(CreateRepoRequest(name = name, description = description, isPrivate = isPrivate, autoInit = autoInit))
 
+    suspend fun getFileSha(owner: String, repo: String, path: String): String? {
+        return runCatching {
+            api.getFileContent(owner, repo, path).sha
+        }.getOrNull()
+    }
+
     suspend fun uploadOrUpdateFile(
         owner: String,
         repo: String,
         path: String,
         content: String,
         message: String = "update $path",
-        branch: String? = null,
-        sha: String? = null
+        branch: String? = null
     ) {
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
+        val existingSha = getFileSha(owner, repo, path)
         api.updateFile(
             owner = owner,
             repo = repo,
             path = path,
-            body = UpdateFileRequest(message = message, content = encoded, sha = sha, branch = branch)
+            body = UpdateFileRequest(message = message, content = encoded, sha = existingSha, branch = branch)
         )
     }
 
