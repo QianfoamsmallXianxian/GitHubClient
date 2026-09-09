@@ -66,12 +66,19 @@ fun RepoScreen(
     val repo by viewModel.repo.collectAsState()
     val contents by viewModel.contents.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val message by viewModel.message.collectAsState()
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(owner, name) { viewModel.loadRepo(owner, name) }
     LaunchedEffect(owner, name, currentPath) { viewModel.loadContents(owner, name, currentPath) }
+
+    LaunchedEffect(message) {
+        if (message == "仓库已删除") {
+            onDeleted()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -100,8 +107,18 @@ fun RepoScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            message?.let {
+                item(key = "message") {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+            }
             repo?.let { item(key = "header") { RepoHeader(it, onOpenIssues, onOpenPulls, onOpenReleases) } }
-            item(key = "files_header") { androidx.compose.material3.Text("文件", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall) }
+            item(key = "files_header") { Text("文件", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall) }
             if (isLoading && contents.isEmpty()) {
                 item(key = "loading") { LoadingState() }
             } else if (contents.isEmpty()) {
@@ -136,7 +153,6 @@ fun RepoScreen(
                 TextButton(onClick = {
                     viewModel.deleteRepository(owner, name)
                     showDeleteDialog = false
-                    onDeleted()
                 }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
