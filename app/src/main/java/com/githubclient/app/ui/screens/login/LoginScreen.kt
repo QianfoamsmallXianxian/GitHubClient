@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -33,6 +36,7 @@ fun LoginScreen(
 ) {
     var pat by remember { mutableStateOf("") }
     val loginState by viewModel.state.collectAsState()
+    val isFetchingToken by viewModel.isFetchingToken.collectAsState()
 
     LaunchedEffect(loginState) {
         if (loginState is LoginState.Success) {
@@ -62,8 +66,23 @@ fun LoginScreen(
         Spacer(Modifier.height(32.dp))
 
         Button(
+            onClick = { viewModel.startOAuthTokenFetch() },
+            enabled = !isFetchingToken && loginState !is LoginState.Loading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (isFetchingToken) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(Icons.Default.Sync, contentDescription = null)
+            }
+            Text(if (isFetchingToken) "正在获取 Token..." else "一键获取 GitHub Token")
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Button(
             onClick = { viewModel.startOAuth() },
-            enabled = loginState !is LoginState.Loading,
+            enabled = loginState !is LoginState.Loading && !isFetchingToken,
             modifier = Modifier.fillMaxWidth()
         ) {
             if (loginState is LoginState.Loading) {
