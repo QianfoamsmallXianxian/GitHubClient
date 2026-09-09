@@ -17,6 +17,10 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -79,36 +83,35 @@ fun RepoScreen(
                 },
                 actions = {
                     Button(onClick = onOpenActions, modifier = Modifier.padding(end = 8.dp)) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Text("Actions")
                     }
                 }
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            repo?.let { RepoHeader(it, onOpenIssues, onOpenPulls, onOpenReleases) }
-            when {
-                isLoading && contents.isEmpty() -> LoadingState()
-                contents.isEmpty() -> EmptyState("仓库为空或无法访问")
-                else -> {
-                    SectionHeader("文件")
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        items(contents, key = { it.sha }) { item ->
-                            ContentRow(
-                                item = item,
-                                onClick = {
-                                    if (item.type == "dir") {
-                                        currentPath = if (currentPath.isBlank()) item.name else "$currentPath/${item.name}"
-                                    } else {
-                                        selectedFile = item
-                                    }
-                                }
-                            )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            repo?.let { item(key = "header") { RepoHeader(it, onOpenIssues, onOpenPulls, onOpenReleases) } }
+            item(key = "files_header") { SectionHeader("文件") }
+            if (isLoading && contents.isEmpty()) {
+                item(key = "loading") { LoadingState() }
+            } else if (contents.isEmpty()) {
+                item(key = "empty") { EmptyState("仓库为空或无法访问") }
+            } else {
+                items(contents, key = { it.sha }) { item ->
+                    ContentRow(
+                        item = item,
+                        onClick = {
+                            if (item.type == "dir") {
+                                currentPath = if (currentPath.isBlank()) item.name else "$currentPath/${item.name}"
+                            } else {
+                                selectedFile = item
+                            }
                         }
-                    }
+                    )
                 }
             }
         }
@@ -127,31 +130,35 @@ private fun RepoHeader(
     onOpenReleases: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(repo.name, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text(repo.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             repo.description?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp), maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 StatChip(Icons.Default.Star, repo.stars.toString())
                 StatChip(Icons.Default.BugReport, repo.openIssues.toString())
+                StatChip(Icons.Default.CallSplit, repo.forks.toString())
                 repo.language?.let { StatChip(Icons.Default.Code, it) }
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onOpenIssues) { Text("Issues") }
-                Button(onClick = onOpenPulls) { Text("PRs") }
-                Button(onClick = onOpenReleases) { Text("Releases") }
+                Button(onClick = onOpenIssues) { Icon(Icons.Default.BugReport, contentDescription = null); Text("Issues") }
+                Button(onClick = onOpenPulls) { Icon(Icons.Default.CallSplit, contentDescription = null); Text("PRs") }
+                Button(onClick = onOpenReleases) { Icon(Icons.Default.Info, contentDescription = null); Text("Releases") }
             }
         }
     }
