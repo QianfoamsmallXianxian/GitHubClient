@@ -26,6 +26,7 @@ import com.githubclient.app.ui.screens.pulls.PullRequestsScreen
 import com.githubclient.app.ui.screens.releases.ReleasesScreen
 import com.githubclient.app.ui.screens.repo.RepoScreen
 import com.githubclient.app.ui.screens.search.SearchScreen
+import com.githubclient.app.ui.screens.settings.TokenSettingsScreen
 import com.githubclient.app.ui.screens.terminal.TerminalScreen
 import com.githubclient.app.ui.screens.toolchain.ToolchainScreen
 
@@ -43,6 +44,7 @@ object Routes {
     const val UPLOAD = "automation/upload"
     const val AI_SETTINGS = "automation/ai_settings"
     const val AI_MODIFY = "automation/ai_modify"
+    const val TOKEN_SETTINGS = "settings/token"
     const val REPO = "repo/{owner}/{name}"
     const val ACTIONS = "repo/{owner}/{name}/actions"
     const val DISPATCH = "repo/{owner}/{name}/actions/dispatch"
@@ -106,6 +108,17 @@ fun AppNavHost() {
                 onOpenCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenRepositories = {
                     navController.popBackStack()
+                },
+                onOpenTokenSettings = { navController.navigate(Routes.TOKEN_SETTINGS) }
+            )
+        }
+        composable(Routes.TOKEN_SETTINGS) {
+            TokenSettingsScreen(
+                onBack = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }
