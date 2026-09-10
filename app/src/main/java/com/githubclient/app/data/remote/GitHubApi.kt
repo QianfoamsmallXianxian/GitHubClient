@@ -17,6 +17,7 @@ import com.githubclient.app.data.model.WorkflowRunsResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -193,7 +194,7 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
 
-    @DELETE("repos/{owner}/{repo}/contents/{path}")
+    @HTTP(method = "DELETE", path = "repos/{owner}/{repo}/contents/{path}", hasBody = true)
     suspend fun deleteFile(
         @Path("owner") owner: String,
         @Path("repo") repo: String,
