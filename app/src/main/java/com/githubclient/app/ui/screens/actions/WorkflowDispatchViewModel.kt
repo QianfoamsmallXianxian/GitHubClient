@@ -23,33 +23,39 @@ class WorkflowDispatchViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    /** 仓库默认分支，触发 workflow 时必须用它；不能硬编码 main */
+    private var defaultBranch: String = ""
+
     fun load(owner: String, name: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _workflows.value = repository.getWorkflows(owner, name).workflows
+                runCatching { repository.getRepo(owner, name).defaultBranch }
+                    .onSuccess { if (it.isNotBlank()) defaultBranch = it }
+                _workflows.value = repository.getWorkflows(owner, name)
                     .filter { it.state == "active" }
             } catch (e: Exception) {
                 _workflows.value = emptyList()
-                _message.value = e.message ?: "加载 Workflow 失败"
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    fun dispatch(owner: String, name: String, workflowId: Long, defaultBranch: String) {
+    fun dispatch(owner: String, name: String, workflowId: Long) {
         viewModelScope.launch {
             try {
-                repository.dispatchWorkflow(owner, name, workflowId, defaultBranch)
-                _message.value = "已触发 Workflow"
+                val branch = defaultBranch.ifBlank {
+                    runCatching { repository.getRepo(owner, name).defaultBranch }
+                        .getOrDefault("main")
+                }
+                repository.dispatchWorkflow(owner, name, workflowId, branch)
+                _message.value = "已在 $branch 分支触发 Workflow"
             } catch (e: Exception) {
                 _message.value = e.message ?: "触发失败"
             }
         }
     }
 
-    fun clearMessage() {
-        _message.value = null
-    }
+    fun clearMessage() { _message.value = null }
 }
