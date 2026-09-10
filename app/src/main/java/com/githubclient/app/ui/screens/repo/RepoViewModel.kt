@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import retrofit2.HttpException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -48,11 +47,48 @@ class RepoViewModel @Inject constructor(
     private val _isCommitsLoading = MutableStateFlow(false)
     val isCommitsLoading: StateFlow<Boolean> = _isCommitsLoading
 
+    private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
+    val selectedPaths: StateFlow<Set<String>> = _selectedPaths
+
+    private val _isDeleting = MutableStateFlow(false)
+    val isDeleting: StateFlow<Boolean> = _isDeleting
+
     private var allContents: List<RepoContent> = emptyList()
+    private var currentOwner: String = ""
+    private var currentName: String = ""
+    private var currentPath: String = ""
 
     fun filterContents(query: String) {
         _contents.value = if (query.isBlank()) allContents
         else allContents.filter { it.name.contains(query, ignoreCase = true) }
+    }
+
+    fun toggleSelect(item: RepoContent) {
+        val cur = _selectedPaths.value.toMutableSet()
+        if (cur.contains(item.path)) cur.remove(item.path) else cur.add(item.path)
+        _selectedPaths.value = cur
+    }
+
+    fun clearSelection() { _selectedPaths.value = emptySet() }
+
+    fun deleteSelected() {
+        val paths = _selectedPaths.value.toList()
+        if (paths.isEmpty()) return
+        viewModelScope.launch {
+            _isDeleting.value = true
+            try {
+                val res = writeRepository.batchDeleteFiles(currentOwner, currentName, paths)
+                val ok = res.count { it.endsWith(": ok") }
+                val fail = res.size - ok
+                _message.value = "已删除 $ok 个文件" + if (fail > 0) "，失败 $fail 个" else ""
+                _selectedPaths.value = emptySet()
+                loadContents(currentOwner, currentName, currentPath)
+            } catch (e: Exception) {
+                _message.value = "删除失败: ${e.message}"
+            } finally {
+                _isDeleting.value = false
+            }
+        }
     }
 
     fun loadCommits(owner: String, name: String) {
@@ -64,24 +100,6 @@ class RepoViewModel @Inject constructor(
                 _commits.value = emptyList()
             } finally {
                 _isCommitsLoading.value = false
-            }
-        }
-    }
-
-    fun deleteRepository(owner: String, name: String) {
-        viewModelScope.launch {
-            _message.value = null
-            try {
-                repository.deleteRepository(owner, name)
-                _message.value = "仓库已删除"
-            } catch (e: Exception) {
-                _message.value = when {
-                    e is HttpException && e.code() == 403 ->
-                        "删除失败(403)：当前 Token 缺少 delete_repo 权限，请到 GitHub 重新生成带 delete_repo 的 Token"
-                    e is HttpException && e.code() == 404 ->
-                        "删除失败(404)：仓库不存在或 Token 无权访问"
-                    else -> "删除失败: ${e.message}"
-                }
             }
         }
     }
@@ -100,6 +118,9 @@ class RepoViewModel @Inject constructor(
     }
 
     fun loadContents(owner: String, name: String, path: String) {
+        currentOwner = owner
+        currentName = name
+        currentPath = path
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -166,4 +187,6 @@ class RepoViewModel @Inject constructor(
             }
         }
     }
+
+    fun clearMessage() { _message.value = null }
 }
