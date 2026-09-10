@@ -29,8 +29,24 @@ import javax.inject.Singleton
 class GitHubWriteRepository @Inject constructor(
     private val api: GitHubApi
 ) {
+    /**
+     * 包一层 HTTP 调用：把 GitHub 返回的错误正文带进异常消息。
+     * 否则 422 / 400 这类错误只能看到 "HTTP 422"，无法定位原因。
+     */
+    private suspend fun <T> call(step: String, block: suspend () -> T): T {
+        try {
+            return block()
+        } catch (e: HttpException) {
+            val body = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
+            val detail = body?.take(400) ?: e.message()
+            throw IllegalStateException("[$step] HTTP ${e.code()}: $detail", e)
+        }
+    }
+
     suspend fun createRepository(name: String, description: String? = null, isPrivate: Boolean = false, autoInit: Boolean = true) =
-        api.createRepository(CreateRepoRequest(name, description, isPrivate, autoInit))
+        call("createRepo") {
+            api.createRepository(CreateRepoRequest(name, description, isPrivate, autoInit))
+        }
 
     suspend fun getFileSha(owner: String, repo: String, path: String): String? =
         runCatching { api.getFileContent(owner, repo, path).sha }.getOrNull()
@@ -38,20 +54,27 @@ class GitHubWriteRepository @Inject constructor(
     suspend fun uploadOrUpdateFile(owner: String, repo: String, path: String, content: String, message: String = "update $path", branch: String? = null) {
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
         val sha = getFileSha(owner, repo, path)
-        api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch))
+        call("updateFile") {
+            api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch))
+        }
     }
 
     suspend fun uploadFileSmart(owner: String, repo: String, path: String, content: String, message: String = "upload $path", branch: String? = null, maxAttempts: Int = 4) {
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
         var last: Throwable? = null
         for (i in 0 until maxAttempts) {
-            val r = runCatching { api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, null, branch)) }
+            val r = runCatching {
+                api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, null, branch))
+            }
             if (r.isSuccess) return
             val c = r.exceptionOrNull()
             if (!(c is HttpException && c.code() == 409)) throw (c ?: IllegalStateException("upload failed"))
             last = c
             val sha = getFileSha(owner, repo, path)
-            if (sha != null) { api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch)); return }
+            if (sha != null) {
+                call("updateFile") { api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch)) }
+                return
+            }
             delay(200L * (i + 1))
         }
         throw (last ?: IllegalStateException("upload failed"))
@@ -60,11 +83,6 @@ class GitHubWriteRepository @Inject constructor(
     suspend fun uploadNewFile(owner: String, repo: String, path: String, content: String, message: String = "upload $path", branch: String? = null) =
         uploadFileSmart(owner, repo, path, content, message, branch)
 
-    /**
-     * 解析仓库真实默认分支。
-     * 之前硬编码 "main" 是错的：老账号 / 部分仓库默认分支是 "master"，
-     * 硬编码会导致文件提交到看不见的分支。
-     */
     private suspend fun resolveBranch(owner: String, repo: String, hint: String?): String {
         if (!hint.isNullOrBlank()) return hint
         val fromApi = runCatching { api.getRepository(owner, repo).defaultBranch }.getOrNull()
@@ -73,7 +91,6 @@ class GitHubWriteRepository @Inject constructor(
 
     /**
      * 批量上传：Git Data API 一次提交全部文件。
-     * 空仓库（Git Data API 会 409）先用 Contents API 落一个占位文件激活。
      */
     suspend fun uploadAllFiles(
         owner: String,
@@ -88,6 +105,7 @@ class GitHubWriteRepository @Inject constructor(
 
         val br = resolveBranch(owner, repo, branch)
 
+        // 空仓库激活
         val existingRef = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         if (existingRef == null) {
             val seed = Base64.encodeToString(
@@ -111,7 +129,9 @@ class GitHubWriteRepository @Inject constructor(
                 chunk.map { (path, content) ->
                     async {
                         val b64 = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
-                        val blob: BlobResponse = api.createBlob(owner, repo, CreateBlobRequest(b64))
+                        val blob: BlobResponse = call("createBlob") {
+                            api.createBlob(owner, repo, CreateBlobRequest(b64))
+                        }
                         lock.withLock { items.add(TreeItem(path, "100644", "blob", blob.sha)) }
                         onProgress?.invoke(done.incrementAndGet(), total, path)
                     }
@@ -121,19 +141,26 @@ class GitHubWriteRepository @Inject constructor(
 
         val parent = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
-        val tree = api.createTree(owner, repo, CreateTreeRequest(items, base))
-        val commit = api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
+
+        val tree = call("createTree") {
+            api.createTree(owner, repo, CreateTreeRequest(items, base))
+        }
+        val commit = call("createCommit") {
+            api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
+        }
         if (parent != null) {
-            api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false))
+            call("updateRef") { api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false)) }
         } else {
-            api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha))
+            call("createRef") { api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha)) }
         }
         total
     }
 
     suspend fun deleteFile(owner: String, repo: String, path: String, sha: String? = null, branch: String? = null) {
         val real = if (!sha.isNullOrBlank()) sha else (getFileSha(owner, repo, path) ?: throw IllegalStateException("no sha: $path"))
-        api.deleteFile(owner, repo, path, DeleteFileRequest("delete $path", real, branch))
+        call("deleteFile") {
+            api.deleteFile(owner, repo, path, DeleteFileRequest("delete $path", real, branch))
+        }
     }
 
     suspend fun batchDeleteFiles(owner: String, repo: String, paths: List<String>, branch: String? = null): List<String> {
