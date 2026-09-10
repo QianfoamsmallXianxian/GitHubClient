@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.prompt.PromptWorkflowManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -14,20 +13,22 @@ class PromptViewModel @Inject constructor(
     private val workflowManager: PromptWorkflowManager
 ) : ViewModel() {
 
-    val isProcessing: StateFlow<Boolean> = workflowManager.isProcessing
+    val isLoading: StateFlow<Boolean> = workflowManager.isLoading
+    val response: StateFlow<String?> = workflowManager.response
     val message: StateFlow<String?> = workflowManager.message
 
-    private val _outputDir = MutableStateFlow(workflowManager.getDefaultOutputDir())
-    val outputDir: StateFlow<String> = _outputDir
-
-    fun processPrompt(prompt: String, command: String, useTermux: Boolean = true) {
-        if (prompt.isBlank() || command.isBlank()) return
+    fun send(prompt: String, command: String = "", useTermux: Boolean = false) {
+        if (prompt.isBlank()) return
         viewModelScope.launch {
-            workflowManager.processPrompt(prompt, command, useTermux)
+            workflowManager.send(prompt, command, useTermux)
         }
     }
 
     fun clearMessage() {
         workflowManager.clearMessage()
+    }
+
+    fun reset() {
+        workflowManager.reset()
     }
 }
