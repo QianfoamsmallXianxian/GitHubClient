@@ -7,27 +7,24 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CallSplit
@@ -88,6 +85,7 @@ fun RepoScreen(
     val context = LocalContext.current
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
+    var showDeleteRepoDialog by remember { mutableStateOf(false) }
     var showCommitsDialog by remember { mutableStateOf(false) }
     var showSearchBar by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -101,6 +99,12 @@ fun RepoScreen(
         if (copyHint != null) {
             kotlinx.coroutines.delay(2000)
             copyHint = null
+        }
+    }
+
+    LaunchedEffect(message) {
+        if (message == "仓库已删除") {
+            onDeleted()
         }
     }
 
@@ -129,10 +133,9 @@ fun RepoScreen(
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Text("Actions")
                         }
-                        IconButton(onClick = {
-                            selectionMode = true
-                            viewModel.clearSelection()
-                        }) { Icon(Icons.Default.SelectAll, contentDescription = "批量选择删除") }
+                        IconButton(onClick = { showDeleteRepoDialog = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除仓库", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             )
@@ -203,6 +206,10 @@ fun RepoScreen(
                                 searchQuery = ""
                                 viewModel.filterContents("")
                             }
+                        },
+                        onToggleSelection = {
+                            selectionMode = !selectionMode
+                            viewModel.clearSelection()
                         }
                     )
                 }
@@ -250,6 +257,23 @@ fun RepoScreen(
 
     selectedFile?.let { file ->
         FileContentDialog(owner, name, file, { selectedFile = null }, viewModel)
+    }
+
+    if (showDeleteRepoDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteRepoDialog = false },
+            title = { Text("删除仓库") },
+            text = { Text("确定要删除 $owner/$name 吗？此操作不可恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteRepository(owner, name)
+                    showDeleteRepoDialog = false
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteRepoDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     if (showCommitsDialog) {
@@ -301,7 +325,8 @@ private fun RepoHeader(
     onOpenCommits: () -> Unit,
     onCopyLink: () -> Unit,
     onOpenReleases: () -> Unit,
-    onToggleSearch: () -> Unit
+    onToggleSearch: () -> Unit,
+    onToggleSelection: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -331,9 +356,10 @@ private fun RepoHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(onClick = onOpenCommits) { Icon(Icons.Default.History, contentDescription = null); Text("提交") }
-                Button(onClick = onCopyLink) { Icon(Icons.Default.Link, contentDescription = null); Text("复制链接") }
+                Button(onClick = onCopyLink) { Icon(Icons.Default.Link, contentDescription = null); Text("链接") }
                 Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("搜索") }
                 Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
+                Button(onClick = onToggleSelection) { Icon(Icons.Default.DeleteSweep, contentDescription = null); Text("批量删") }
             }
         }
     }
