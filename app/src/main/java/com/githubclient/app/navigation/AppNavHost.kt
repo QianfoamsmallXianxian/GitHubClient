@@ -88,7 +88,6 @@ fun AppNavHost() {
             HomeScreen(
                 onOpenRepo = { owner, name -> navController.navigate(Routes.repo(owner, name)) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
-                onOpenPrompt = { navController.navigate(Routes.PROMPT) },
                 onOpenAutomation = { navController.navigate(Routes.AUTOMATION) },
                 onOpenCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenAccount = { navController.navigate(Routes.ACCOUNT) }
