@@ -39,10 +39,13 @@ class AiCodeManager @Inject constructor(
                 put("temperature", 0.2)
             }
 
+            // 用 header() 而非 addHeader()，确保 Authorization 只有一份，
+            // 避免与 OkHttp 拦截器注入的 GitHub Token 叠加。
             val request = Request.Builder()
                 .url("$baseUrl/chat/completions")
                 .post(json.toString().toRequestBody("application/json".toMediaType()))
-                .addHeader("Authorization", "Bearer $apiKey")
+                .header("Authorization", "Bearer $apiKey")
+                .header("Content-Type", "application/json")
                 .build()
 
             okHttpClient.newCall(request).execute().use { response ->
