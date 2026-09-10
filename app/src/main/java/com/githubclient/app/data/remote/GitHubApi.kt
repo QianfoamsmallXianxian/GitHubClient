@@ -193,6 +193,15 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
 
+    @DELETE("repos/{owner}/{repo}/contents/{path}")
+    suspend fun deleteFile(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("path") path: String,
+        @Body body: DeleteFileRequest,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    )
+
     @GET("search/repositories")
     suspend fun searchRepositories(
         @Query("q") query: String,
@@ -229,5 +238,12 @@ data class UpdateFileRequest(
     val message: String,
     val content: String,
     val sha: String? = null,
+    val branch: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class DeleteFileRequest(
+    val message: String,
+    val sha: String,
     val branch: String? = null
 )
