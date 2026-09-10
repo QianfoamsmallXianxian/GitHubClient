@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,14 +54,15 @@ fun HomeScreen(
     onOpenRepo: (String, String) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAutomation: () -> Unit,
+    onOpenPrompt: () -> Unit,
     onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val repos by viewModel.repos.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
-    val user by viewModel.user.collectAsState()
+    val avatarUrl by viewModel.avatarUrl.collectAsState()
 
-    LaunchedEffect(Unit) { viewModel.refresh() }
+    LaunchedEffect(Unit) { viewModel.refresh(); viewModel.loadUser() }
 
     Scaffold(
         topBar = {
@@ -66,12 +70,12 @@ fun HomeScreen(
                 title = { Text("仓库") },
                 actions = {
                     IconButton(onClick = onOpenAccount) {
-                        val avatarUrl = user?.avatarUrl
-                        if (!avatarUrl.isNullOrBlank()) {
+                        val url = avatarUrl
+                        if (!url.isNullOrBlank()) {
                             AsyncImage(
-                                model = avatarUrl,
-                                contentDescription = "账号",
-                                modifier = Modifier.size(28.dp),
+                                model = url,
+                                contentDescription = "头像",
+                                modifier = Modifier.size(30.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                         } else {
@@ -83,18 +87,9 @@ fun HomeScreen(
         },
         bottomBar = {
             NavigationBar(containerColor = Color.White) {
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenSearch,
-                    icon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
-                    label = { Text("搜索") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenAutomation,
-                    icon = { Icon(Icons.Default.Apps, contentDescription = "功能") },
-                    label = { Text("功能") }
-                )
+                NavigationBarItem(selected = false, onClick = onOpenAutomation, icon = { Icon(Icons.Default.PlayArrow, contentDescription = "自动化") }, label = { Text("自动化") })
+                NavigationBarItem(selected = false, onClick = onOpenPrompt, icon = { Icon(Icons.Default.SmartToy, contentDescription = "提示") }, label = { Text("提示") })
+                NavigationBarItem(selected = false, onClick = onOpenSearch, icon = { Icon(Icons.Default.Search, contentDescription = "搜索") }, label = { Text("搜索") })
             }
         }
     ) { padding ->
