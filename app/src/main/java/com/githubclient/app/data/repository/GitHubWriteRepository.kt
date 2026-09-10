@@ -2,6 +2,7 @@ package com.githubclient.app.data.repository
 
 import android.util.Base64
 import com.githubclient.app.data.remote.CreateRepoRequest
+import com.githubclient.app.data.remote.DeleteFileRequest
 import com.githubclient.app.data.remote.GitHubApi
 import com.githubclient.app.data.remote.UpdateFileRequest
 import javax.inject.Inject
@@ -36,6 +37,36 @@ class GitHubWriteRepository @Inject constructor(
             path = path,
             body = UpdateFileRequest(message = message, content = encoded, sha = existingSha, branch = branch)
         )
+    }
+
+    suspend fun deleteFile(owner: String, repo: String, path: String, branch: String? = null) {
+        val sha = getFileSha(owner, repo, path)
+            ?: throw IllegalStateException("无法获取 $path 的 sha")
+        api.deleteFile(
+            owner = owner,
+            repo = repo,
+            path = path,
+            body = DeleteFileRequest(message = "delete $path", sha = sha, branch = branch)
+        )
+    }
+
+    suspend fun batchDeleteFiles(
+        owner: String,
+        repo: String,
+        paths: List<String>,
+        branch: String? = null
+    ): List<String> {
+        val results = mutableListOf<String>()
+        for (path in paths) {
+            runCatching {
+                deleteFile(owner, repo, path, branch)
+            }.onSuccess {
+                results.add("$path: ok")
+            }.onFailure { e ->
+                results.add("$path: ${e.message}")
+            }
+        }
+        return results
     }
 
     suspend fun batchUploadFiles(
