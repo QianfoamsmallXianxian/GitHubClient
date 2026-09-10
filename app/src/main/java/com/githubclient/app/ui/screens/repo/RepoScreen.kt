@@ -68,6 +68,7 @@ fun RepoScreen(
     name: String,
     onBack: () -> Unit,
     onOpenActions: () -> Unit,
+    onOpenReleases: () -> Unit,
     onDeleted: () -> Unit = {},
     viewModel: RepoViewModel = hiltViewModel()
 ) {
@@ -142,6 +143,7 @@ fun RepoScreen(
                         onCopyLink = {
                             copyToClipboard(context, "https://github.com/$owner/$name")
                         },
+                        onOpenReleases = onOpenReleases,
                         onToggleSearch = {
                             showSearchBar = !showSearchBar
                             if (!showSearchBar) {
@@ -258,6 +260,7 @@ private fun RepoHeader(
     repo: Repository,
     onOpenCommits: () -> Unit,
     onCopyLink: () -> Unit,
+    onOpenReleases: () -> Unit,
     onToggleSearch: () -> Unit
 ) {
     Card(
@@ -290,6 +293,7 @@ private fun RepoHeader(
                 Button(onClick = onOpenCommits) { Icon(Icons.Default.History, contentDescription = null); Text("提交历史") }
                 Button(onClick = onCopyLink) { Icon(Icons.Default.Link, contentDescription = null); Text("复制链接") }
                 Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("代码搜索") }
+                Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
             }
         }
     }
