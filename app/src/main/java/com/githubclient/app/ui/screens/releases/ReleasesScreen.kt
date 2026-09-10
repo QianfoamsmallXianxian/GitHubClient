@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,6 +29,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -40,9 +43,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.githubclient.app.data.model.Release
 import com.githubclient.app.data.model.ReleaseAsset
 import com.githubclient.app.ui.components.EmptyState
@@ -123,6 +129,7 @@ private fun ReleaseCard(release: Release, onOpenUrl: (String) -> Unit) {
             modifier = Modifier.padding(Dimens.CardPadding),
             verticalArrangement = Arrangement.spacedBy(Dimens.Sm)
         ) {
+            // 标题行：版本名 + 跳转网页
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     release.name ?: release.tagName,
@@ -141,33 +148,72 @@ private fun ReleaseCard(release: Release, onOpenUrl: (String) -> Unit) {
                     }
                 }
             }
-            Text(
-                release.tagName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            if (release.prerelease) {
+
+            // 标签 + 预发布标记
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Dimens.Sm)
+            ) {
                 Text(
-                    "预发布",
-                    style = MaterialTheme.typography.labelSmall,
+                    release.tagName,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
+                if (release.prerelease) {
+                    Text(
+                        "预发布",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
-            release.publishedAt?.let {
+
+            // 发布者 + 发布时间（对齐 GitHub 网页版）
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Dimens.Sm)
+            ) {
+                val avatar = release.author?.avatarUrl
+                if (!avatar.isNullOrBlank()) {
+                    AsyncImage(
+                        model = avatar,
+                        contentDescription = null,
+                        modifier = Modifier.size(Dimens.IconSm).clip(CircleShape)
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(Dimens.IconSm),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Text(
-                    it,
+                    release.author?.login ?: "未知作者",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                release.publishedAt?.let {
+                    Text(
+                        "发布于 ${it.take(10)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+
+            // 更新内容
             release.body?.takeIf { it.isNotBlank() }?.let { body ->
+                HorizontalDivider(thickness = Dimens.Divider)
                 Text(
                     body,
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 8,
+                    maxLines = 12,
                     overflow = TextOverflow.Ellipsis
                 )
             }
+
+            // 作者上传的附件
             if (release.assets.isNotEmpty()) {
                 HorizontalDivider(thickness = Dimens.Divider)
                 Text(
@@ -176,6 +222,45 @@ private fun ReleaseCard(release: Release, onOpenUrl: (String) -> Unit) {
                 )
                 release.assets.forEach { asset ->
                     AssetRow(asset, onDownload = { onOpenUrl(asset.downloadUrl) })
+                }
+            }
+
+            // 源码包下载（对应网页版的 Source code zip / tar.gz）
+            if (release.zipballUrl != null || release.tarballUrl != null) {
+                HorizontalDivider(thickness = Dimens.Divider)
+                Text("源码包", style = MaterialTheme.typography.titleSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Dimens.Sm)
+                ) {
+                    release.zipballUrl?.let { url ->
+                        OutlinedButton(
+                            onClick = { onOpenUrl(url) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(Dimens.IconSm)
+                            )
+                            Spacer(Modifier.width(Dimens.Xs))
+                            Text("zip")
+                        }
+                    }
+                    release.tarballUrl?.let { url ->
+                        OutlinedButton(
+                            onClick = { onOpenUrl(url) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(Dimens.IconSm)
+                            )
+                            Spacer(Modifier.width(Dimens.Xs))
+                            Text("tar.gz")
+                        }
+                    }
                 }
             }
         }
@@ -216,7 +301,7 @@ private fun AssetRow(asset: ReleaseAsset, onDownload: () -> Unit) {
                 contentDescription = null,
                 modifier = Modifier.size(Dimens.IconSm)
             )
-            Spacer(Modifier.width(Dimens.Sm))
+            Spacer(Modifier.width(Dimens.Xs))
             Text("下载")
         }
     }

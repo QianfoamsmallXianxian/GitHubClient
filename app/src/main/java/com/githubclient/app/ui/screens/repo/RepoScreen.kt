@@ -6,6 +6,8 @@ import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -341,6 +343,8 @@ private fun copyToClipboard(context: Context, text: String) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class)
 private fun RepoHeader(
     repo: Repository,
     onOpenCommits: () -> Unit,
@@ -375,7 +379,7 @@ private fun RepoHeader(
                 repo.language?.let { StatChip(Icons.Default.Code, it) }
             }
             // 第一行：内容入口
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -385,7 +389,7 @@ private fun RepoHeader(
                 Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
             }
             // 第二行：工具操作
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {

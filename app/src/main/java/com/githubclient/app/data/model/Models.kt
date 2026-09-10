@@ -107,6 +107,12 @@ data class Release(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("published_at") val publishedAt: String? = null,
     @SerialName("html_url") val htmlUrl: String? = null,
+    // 源码包下载（GitHub 网页版 Releases 页的 Source code 区块）
+    @SerialName("tarball_url") val tarballUrl: String? = null,
+    @SerialName("zipball_url") val zipballUrl: String? = null,
+    // 发布者
+    val author: User? = null,
+    // 作者上传的附件
     val assets: List<ReleaseAsset> = emptyList()
 )
 
@@ -154,12 +160,10 @@ data class CommitAuthor(
     val date: String? = null
 )
 
-@kotlinx.serialization.Serializable
+@Serializable
 data class WorkflowListResponse(
-    @kotlinx.serialization.SerialName("total_count")
-    val totalCount: Int,
-    @kotlinx.serialization.SerialName("workflows")
-    val workflows: List<Workflow>
+    @SerialName("total_count") val totalCount: Int,
+    @SerialName("workflows") val workflows: List<Workflow>
 )
 
 @Serializable
