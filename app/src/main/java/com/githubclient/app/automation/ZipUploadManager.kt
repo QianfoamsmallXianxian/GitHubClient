@@ -46,7 +46,7 @@ class ZipUploadManager @Inject constructor(
     private val _state = MutableStateFlow<ZipUploadState>(ZipUploadState.Idle)
     val state: StateFlow<ZipUploadState> = _state
 
-    private val uploadConcurrency = 8
+    private val uploadConcurrency = 3
     private val progressEvery = 25
 
     /** 通知刷新节流：每 N 个文件才更新一次前台通知，避免频繁 startService */

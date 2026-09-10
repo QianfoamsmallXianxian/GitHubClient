@@ -40,7 +40,7 @@ class AutoRepoManager @Inject constructor(
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
 
-    private val uploadConcurrency = 8
+    private val uploadConcurrency = 3
 
     /** 通知刷新节流：每 N 个文件才更新一次前台通知 */
     private val notifyEvery = 10
