@@ -166,6 +166,7 @@ fun AppNavHost() {
                 name = name,
                 onBack = { navController.popBackStack() },
                 onOpenActions = { navController.navigate(Routes.actions(owner, name)) },
+                onOpenReleases = { navController.navigate(Routes.releases(owner, name)) },
                 onDeleted = { navController.popBackStack() }
             )
         }
