@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.githubclient.app.ui.theme.Dimens
 
 @Composable
 fun LoginScreen(
@@ -50,7 +52,7 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(Dimens.Xl),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -59,14 +61,14 @@ fun LoginScreen(
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.primary
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Dimens.Sm))
         Text(
             text = "登录以访问你的仓库与 Actions",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(Dimens.Xl))
 
         // OAuth 需要 client_secret，本仓库未内置有效密钥，因此改为引导用户
         // 直接在 GitHub 网页生成带 repo/workflow/delete_repo 权限的 Token。
@@ -83,11 +85,17 @@ fun LoginScreen(
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Sync, contentDescription = null)
+            Icon(
+                Icons.Default.Sync,
+                contentDescription = null,
+                modifier = Modifier.size(Dimens.IconSm)
+            )
+            // 图标与文字之间留出间距，之前直接相邻会粘在一起
+            Spacer(Modifier.width(Dimens.Sm))
             Text("一键获取 GitHub Token")
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(Dimens.Xl))
 
         Text(
             text = "在打开的网页中生成 Token，复制后粘贴到下方",
@@ -95,7 +103,7 @@ fun LoginScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Dimens.Md))
 
         OutlinedTextField(
             value = pat,
@@ -105,7 +113,7 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(Dimens.Sm))
 
         Button(
             onClick = { viewModel.loginWithPat(pat) },
@@ -113,14 +121,17 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             if (loginState is LoginState.Loading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(Dimens.IconSm),
+                    strokeWidth = 2.dp
+                )
             } else {
                 Text("使用令牌登录")
             }
         }
 
         if (loginState is LoginState.Error) {
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(Dimens.Lg))
             Text(
                 text = (loginState as LoginState.Error).message,
                 color = MaterialTheme.colorScheme.error,

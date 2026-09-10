@@ -8,10 +8,8 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,7 +111,13 @@ fun AutoCreateRepoScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(Dimens.ScreenPadding),
+            // 统一间距：字段之间固定 12dp，不再逐处插 Spacer
+            verticalArrangement = Arrangement.spacedBy(Dimens.Md)
         ) {
             if (!hasStoragePermission) {
                 Text(
@@ -120,17 +125,14 @@ fun AutoCreateRepoScreen(
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
-                Spacer(Modifier.height(8.dp))
                 Button(
                     onClick = { requestStoragePermission() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("授予所有文件访问权限") }
-                Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { refreshPermission() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("我已授权，重新检测") }
-                Spacer(Modifier.height(16.dp))
             }
 
             OutlinedTextField(
@@ -140,14 +142,12 @@ fun AutoCreateRepoScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
                 label = { Text("描述") },
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = localPath,
                 onValueChange = {
@@ -159,7 +159,6 @@ fun AutoCreateRepoScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = { viewModel.previewScan(localPath) },
                 enabled = !isPreviewing,
@@ -167,7 +166,6 @@ fun AutoCreateRepoScreen(
             ) { Text(if (isPreviewing) "检测中..." else "先检测目录") }
 
             previewText?.let {
-                Spacer(Modifier.height(6.dp))
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
@@ -175,7 +173,6 @@ fun AutoCreateRepoScreen(
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -184,7 +181,6 @@ fun AutoCreateRepoScreen(
                 Text("私有仓库", style = MaterialTheme.typography.bodyMedium)
                 Switch(checked = isPrivate, onCheckedChange = { isPrivate = it })
             }
-            Spacer(Modifier.height(16.dp))
 
             val isRunning = state is AutoRepoState.Running
             Button(
@@ -197,7 +193,6 @@ fun AutoCreateRepoScreen(
 
             when (val s = state) {
                 is AutoRepoState.Progress -> {
-                    Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(
                         progress = { s.progress },
                         modifier = Modifier.fillMaxWidth()
@@ -205,12 +200,10 @@ fun AutoCreateRepoScreen(
                     Text(
                         s.message,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 is AutoRepoState.Success -> {
-                    Spacer(Modifier.height(12.dp))
                     Text(
                         "仓库 ${s.repoFullName} 创建完成，成功上传 ${s.uploadedCount} 个文件" +
                             if (s.failed.isEmpty()) "" else "，失败 ${s.failed.size} 个",
@@ -221,15 +214,15 @@ fun AutoCreateRepoScreen(
                         Text(
                             s.failed.take(5).joinToString("\n"),
                             color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
-                is AutoRepoState.Error -> {
-                    Spacer(Modifier.height(12.dp))
-                    Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
+                is AutoRepoState.Error -> Text(
+                    s.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
                 else -> Unit
             }
         }
