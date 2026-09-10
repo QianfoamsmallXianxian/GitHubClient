@@ -17,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -52,7 +51,6 @@ fun HomeScreen(
     onOpenRepo: (String, String) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAutomation: () -> Unit,
-    onOpenPrompt: () -> Unit,
     onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -96,12 +94,6 @@ fun HomeScreen(
                     onClick = onOpenAutomation,
                     icon = { Icon(Icons.Default.PlayArrow, contentDescription = "自动化") },
                     label = { Text("自动化") }
-                )
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onOpenPrompt,
-                    icon = { Icon(Icons.Default.SmartToy, contentDescription = "提示") },
-                    label = { Text("提示") }
                 )
             }
         }
