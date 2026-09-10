@@ -3,20 +3,23 @@ package com.githubclient.app.ui.screens.repo
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
@@ -24,6 +27,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CallSplit
@@ -33,6 +37,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,20 +83,24 @@ fun RepoScreen(
     val message by viewModel.message.collectAsState()
     val commits by viewModel.commits.collectAsState()
     val isCommitsLoading by viewModel.isCommitsLoading.collectAsState()
+    val selectedPaths by viewModel.selectedPaths.collectAsState()
+    val isDeleting by viewModel.isDeleting.collectAsState()
     val context = LocalContext.current
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
     var showCommitsDialog by remember { mutableStateOf(false) }
     var showSearchBar by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var selectionMode by remember { mutableStateOf(false) }
+    var copyHint by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(owner, name) { viewModel.loadRepo(owner, name) }
     LaunchedEffect(owner, name, currentPath) { viewModel.loadContents(owner, name, currentPath) }
 
-    LaunchedEffect(message) {
-        if (message == "仓库已删除") {
-            onDeleted()
+    LaunchedEffect(copyHint) {
+        if (copyHint != null) {
+            kotlinx.coroutines.delay(2000)
+            copyHint = null
         }
     }
 
@@ -101,27 +110,70 @@ fun RepoScreen(
                 title = { Text(if (currentPath.isBlank()) "$owner/$name" else currentPath, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (currentPath.isBlank()) onBack() else currentPath = currentPath.substringBeforeLast('/', "")
+                        if (selectionMode) {
+                            selectionMode = false
+                            viewModel.clearSelection()
+                        } else if (currentPath.isBlank()) onBack() else currentPath = currentPath.substringBeforeLast('/', "")
                     }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
                 actions = {
-                    Button(onClick = onOpenActions, modifier = Modifier.padding(end = 4.dp)) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Text("Actions")
-                    }
-                    IconButton(onClick = { showDeleteDialog = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = "删除仓库", tint = MaterialTheme.colorScheme.error)
+                    if (selectionMode) {
+                        IconButton(onClick = {
+                            selectionMode = false
+                            viewModel.clearSelection()
+                        }) { Icon(Icons.Default.Close, contentDescription = "取消选择") }
+                    } else {
+                        Button(onClick = onOpenActions, modifier = Modifier.padding(end = 4.dp)) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Text("Actions")
+                        }
+                        IconButton(onClick = {
+                            selectionMode = true
+                            viewModel.clearSelection()
+                        }) { Icon(Icons.Default.SelectAll, contentDescription = "批量选择删除") }
                     }
                 }
             )
+        },
+        bottomBar = {
+            if (selectionMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = { viewModel.deleteSelected() },
+                        enabled = selectedPaths.isNotEmpty() && !isDeleting,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null)
+                        Text(if (isDeleting) "删除中..." else "删除选中 (${selectedPaths.size})")
+                    }
+                    Button(onClick = {
+                        selectionMode = false
+                        viewModel.clearSelection()
+                    }) { Text("取消") }
+                }
+            }
         }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            copyHint?.let {
+                item(key = "copyhint") {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+            }
             message?.let {
                 item(key = "message") {
                     Text(
@@ -142,6 +194,7 @@ fun RepoScreen(
                         },
                         onCopyLink = {
                             copyToClipboard(context, "https://github.com/$owner/$name")
+                            copyHint = "已复制链接: https://github.com/$owner/$name"
                         },
                         onOpenReleases = onOpenReleases,
                         onToggleSearch = {
@@ -178,8 +231,12 @@ fun RepoScreen(
                 items(contents, key = { it.sha }) { item ->
                     ContentRow(
                         item = item,
+                        selectionMode = selectionMode,
+                        selected = selectedPaths.contains(item.path),
                         onClick = {
-                            if (item.type == "dir") {
+                            if (selectionMode) {
+                                viewModel.toggleSelect(item)
+                            } else if (item.type == "dir") {
                                 currentPath = if (currentPath.isBlank()) item.name else "$currentPath/${item.name}"
                             } else {
                                 selectedFile = item
@@ -193,23 +250,6 @@ fun RepoScreen(
 
     selectedFile?.let { file ->
         FileContentDialog(owner, name, file, { selectedFile = null }, viewModel)
-    }
-
-    if (showDeleteDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = { Text("删除仓库") },
-            text = { Text("确定要删除 $owner/$name 吗？此操作不可恢复。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteRepository(owner, name)
-                    showDeleteDialog = false
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
-            }
-        )
     }
 
     if (showCommitsDialog) {
@@ -290,9 +330,9 @@ private fun RepoHeader(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onOpenCommits) { Icon(Icons.Default.History, contentDescription = null); Text("提交历史") }
+                Button(onClick = onOpenCommits) { Icon(Icons.Default.History, contentDescription = null); Text("提交") }
                 Button(onClick = onCopyLink) { Icon(Icons.Default.Link, contentDescription = null); Text("复制链接") }
-                Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("代码搜索") }
+                Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("搜索") }
                 Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
             }
         }
@@ -308,12 +348,20 @@ private fun StatChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text
 }
 
 @Composable
-private fun ContentRow(item: RepoContent, onClick: () -> Unit) {
+private fun ContentRow(
+    item: RepoContent,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (selectionMode) {
+            Checkbox(checked = selected, onCheckedChange = { onClick() })
+        }
         val icon = if (item.type == "dir") Icons.Default.Folder else Icons.Default.InsertDriveFile
         Icon(icon, contentDescription = null, tint = if (item.type == "dir") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(item.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
