@@ -1,12 +1,12 @@
 package com.githubclient.app.ui.screens.automation
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +58,12 @@ fun CreateRepoScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(Dimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(Dimens.Md)
         ) {
             OutlinedTextField(
                 value = name,
@@ -66,43 +72,45 @@ fun CreateRepoScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = description,
                 onValueChange = { description = it },
                 label = { Text("描述") },
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("私有仓库", style = MaterialTheme.typography.bodyMedium)
                 Switch(checked = isPrivate, onCheckedChange = { isPrivate = it })
             }
-            Spacer(Modifier.height(16.dp))
             Button(
                 onClick = { viewModel.create(name, description, isPrivate) },
                 enabled = name.isNotBlank() && state !is CreateRepoState.Loading,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state is CreateRepoState.Loading) {
-                    CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(Dimens.IconSm),
+                        strokeWidth = 2.dp
+                    )
                 } else {
                     Text("创建")
                 }
             }
             when (val s = state) {
-                is CreateRepoState.Success -> {
-                    Spacer(Modifier.height(12.dp))
-                    Text(s.message, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                }
-                is CreateRepoState.Error -> {
-                    Spacer(Modifier.height(12.dp))
-                    Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
+                is CreateRepoState.Success -> Text(
+                    s.message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                is CreateRepoState.Error -> Text(
+                    s.message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
                 else -> Unit
             }
         }
