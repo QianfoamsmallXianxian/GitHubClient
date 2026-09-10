@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipFile
 import java.io.File
 import java.io.FileOutputStream
@@ -51,7 +52,13 @@ class ZipUploadViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = ZipUploadState.Loading
             try {
-                val cleanOwner = owner.trim().substringBefore('/').ifBlank { return@launch }
+                val cleanOwner = owner.trim().substringBefore('/')
+                val cleanRepo = repo.trim()
+                if (cleanOwner.isBlank() || cleanRepo.isBlank()) {
+                    _state.value = ZipUploadState.Error("请填写 Owner 和仓库名")
+                    return@launch
+                }
+
                 val files = withContext(Dispatchers.IO) {
                     extractTextFilesWithProgress(zipBytes)
                 }
@@ -71,7 +78,7 @@ class ZipUploadViewModel @Inject constructor(
                                     runCatching {
                                         writeRepository.uploadOrUpdateFile(
                                             owner = cleanOwner,
-                                            repo = repo,
+                                            repo = cleanRepo,
                                             path = path,
                                             content = content,
                                             message = "zip upload $path"
@@ -95,7 +102,7 @@ class ZipUploadViewModel @Inject constructor(
 
                 val uploaded = total - failed.size
                 val triggerMessage = if (autoTriggerBuild && uploaded > 0) {
-                    runCatching { triggerBuild(cleanOwner, repo) }
+                    runCatching { triggerBuild(cleanOwner, cleanRepo) }
                         .getOrElse { "触发失败: ${it.message}" }
                 } else {
                     "未触发构建"
@@ -112,6 +119,10 @@ class ZipUploadViewModel @Inject constructor(
         }
     }
 
+    fun reset() {
+        _state.value = ZipUploadState.Idle
+    }
+
     private fun extractTextFilesWithProgress(zipBytes: ByteArray): Map<String, String> {
         val tempFile = File.createTempFile("src_upload", ".zip")
         try {
@@ -119,7 +130,7 @@ class ZipUploadViewModel @Inject constructor(
             val files = linkedMapOf<String, String>()
             ZipFile.builder().setFile(tempFile).get().use { zip ->
                 val entries = zip.entries
-                val allEntries = mutableListOf<org.apache.commons.compress.archivers.zip.ZipArchiveEntry>()
+                val allEntries = mutableListOf<ZipArchiveEntry>()
                 while (entries.hasMoreElements()) {
                     allEntries.add(entries.nextElement())
                 }
@@ -145,10 +156,10 @@ class ZipUploadViewModel @Inject constructor(
         }
     }
 
+    /** 去掉压缩包内多余的一层公共根目录，例如 GitHubClient-main/ */
     private fun stripCommonRoot(files: Map<String, String>): Map<String, String> {
         if (files.isEmpty()) return files
-        val paths = files.keys.toList()
-        val splitPaths = paths.map { it.split('/').filter { seg -> seg.isNotBlank() } }
+        val splitPaths = files.keys.map { it.split('/').filter { seg -> seg.isNotBlank() } }
         val minSegments = splitPaths.minOf { it.size }
         var commonSegments = 0
         outer@ for (i in 0 until minSegments) {
@@ -168,7 +179,8 @@ class ZipUploadViewModel @Inject constructor(
         val workflows = repository.getWorkflows(owner, repo).workflows
             .filter { it.state == "active" }
         val workflow = workflows.firstOrNull() ?: return "没有找到可用的 workflow"
-        repository.dispatchWorkflow(owner, repo, workflow.id, "main")
+        val branch = runCatching { repository.getRepo(owner, repo).defaultBranch }.getOrDefault("main")
+        repository.dispatchWorkflow(owner, repo, workflow.id, branch)
         return "已触发构建: ${workflow.name}"
     }
 }
