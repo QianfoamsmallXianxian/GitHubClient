@@ -18,7 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -94,11 +94,17 @@ fun AccountScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onOpenTokenSettings, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Settings, contentDescription = null)
-                    Text("Token 设置")
+                    Icon(Icons.Default.Info, contentDescription = null)
+                    Text("账号信息")
                 }
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = {
+                        viewModel.logout()
+                        onLogout()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Icon(Icons.Default.AccountCircle, contentDescription = null)
                     Text("退出登录")
                 }
