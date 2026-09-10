@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
 
 sealed interface LoginState {
@@ -34,6 +35,9 @@ class LoginViewModel @Inject constructor(
     val isFetchingToken: StateFlow<Boolean> = _isFetchingToken
 
     init {
+        // 先清掉上次残留的 OAuth 状态，避免回到登录页时被 Launching 卡在 Loading
+        oauthManager.reset()
+
         oauthManager.oauthState.onEach { oauthState ->
             when (oauthState) {
                 is OAuthState.Success -> {
@@ -52,7 +56,6 @@ class LoginViewModel @Inject constructor(
             }
         }.launchIn(viewModelScope)
 
-        // 自动登录
         if (tokenManager.hasToken()) {
             _state.value = LoginState.Success
         }
@@ -73,11 +76,14 @@ class LoginViewModel @Inject constructor(
     }
 
     fun loginWithPat(token: String) {
+        if (token.isBlank()) return
         viewModelScope.launch {
             _state.value = LoginState.Loading
             try {
-                tokenManager.saveToken(token)
-                repository.getCurrentUser()
+                withTimeout(20_000L) {
+                    tokenManager.saveToken(token)
+                    repository.getCurrentUser()
+                }
                 _state.value = LoginState.Success
             } catch (e: Exception) {
                 tokenManager.clearToken()
