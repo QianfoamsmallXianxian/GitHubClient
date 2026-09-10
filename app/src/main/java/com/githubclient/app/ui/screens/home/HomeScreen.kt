@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -53,6 +54,7 @@ fun HomeScreen(
     onOpenRepo: (String, String) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAutomation: () -> Unit,
+    onOpenCreateRepo: () -> Unit,
     onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
@@ -90,6 +92,12 @@ fun HomeScreen(
                     onClick = onOpenSearch,
                     icon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
                     label = { Text("搜索") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenCreateRepo,
+                    icon = { Icon(Icons.Default.Add, contentDescription = "创建") },
+                    label = { Text("创建") }
                 )
                 NavigationBarItem(
                     selected = false,
