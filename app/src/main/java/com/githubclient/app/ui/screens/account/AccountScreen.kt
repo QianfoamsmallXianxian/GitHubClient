@@ -88,6 +88,14 @@ fun AccountScreen(
             }
             item(key = "actions") {
                 Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.SwapHoriz, contentDescription = null)
+                    Text("切换账号")
+                }
+                Spacer(Modifier.height(8.dp))
                 Button(onClick = onOpenCreateRepo, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text("创建仓库")
@@ -156,17 +164,22 @@ private fun AccountCard(
                 )
             }
             Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(account.login, style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(account.login, style = MaterialTheme.typography.titleMedium)
+                    IconButton(onClick = onSwitch, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            Icons.Default.SwapHoriz,
+                            contentDescription = "切换账号",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
                 Text(
-                    if (isActive) "当前账号" else "未使用",
+                    if (isActive) "当前账号" else "点击切换",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            if (!isActive) {
-                IconButton(onClick = onSwitch) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = "切换账号", tint = MaterialTheme.colorScheme.primary)
-                }
             }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "删除账号", tint = MaterialTheme.colorScheme.error)
