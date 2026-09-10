@@ -89,6 +89,7 @@ fun AppNavHost() {
                 onOpenRepo = { owner, name -> navController.navigate(Routes.repo(owner, name)) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
                 onOpenAutomation = { navController.navigate(Routes.AUTOMATION) },
+                onOpenCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenAccount = { navController.navigate(Routes.ACCOUNT) }
             )
         }
@@ -100,7 +101,6 @@ fun AppNavHost() {
                         popUpTo(0) { inclusive = true }
                     }
                 },
-                onOpenCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenRepositories = {
                     navController.popBackStack()
                 },
