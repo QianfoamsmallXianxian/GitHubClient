@@ -32,8 +32,28 @@ class GitHubWriteRepository @Inject constructor(
     private val api: GitHubApi
 ) {
     /**
-     * 包一层：把 GitHub 返回的错误正文带进异常消息，便于定位 4xx。
+     * 全局写请求节流。
+     *
+     * GitHub 的次级限流（secondary rate limit）针对「短时间内大量写请求」。
+     * 之前并发 6 且无间隔，一秒能发几十个 blob 写请求，必然触发 403。
+     *
+     * 这里用一个全局闸门，保证任意两次写请求之间至少间隔 minIntervalMs。
+     * 无论并发多少，实际速率都被限制在 1/minIntervalMs。
      */
+    private val rateMutex = Mutex()
+    private var nextAllowedAtMs = 0L
+    private val minIntervalMs = 600L   // 约 1.6 次写请求/秒
+
+    private suspend fun rateGate() {
+        rateMutex.withLock {
+            val now = System.currentTimeMillis()
+            if (now < nextAllowedAtMs) {
+                delay(nextAllowedAtMs - now)
+            }
+            nextAllowedAtMs = System.currentTimeMillis() + minIntervalMs
+        }
+    }
+
     private suspend fun <T> call(step: String, block: suspend () -> T): T {
         try {
             return block()
@@ -47,9 +67,13 @@ class GitHubWriteRepository @Inject constructor(
     /**
      * 带重试的调用。
      *
-     * 批量上传时，个别请求超时 / 5xx 很常见。原来一旦某个请求失败，
-     * 整批上传就中断，表现就是「传到一半超时」。
-     * 这里对可恢复错误退避重试，避免单点失败拖垮整批。
+     * 可恢复错误：
+     *  - 网络超时 / IOException
+     *  - 5xx
+     *  - 429
+     *  - 403 且正文含 rate limit（次级限流）
+     *
+     * 限流的退避较长（30s/60s/90s），因为 GitHub 的次级限流会持续几分钟。
      */
     private suspend fun <T> callWithRetry(
         step: String,
@@ -62,19 +86,22 @@ class GitHubWriteRepository @Inject constructor(
                 return call(step, block)
             } catch (e: Throwable) {
                 last = e
-                val recoverable = when (e) {
+                val msg = e.message ?: ""
+                val isRateLimit = msg.contains("rate limit", ignoreCase = true) ||
+                    msg.contains("HTTP 429")
+                val isRetryable = when (e) {
                     is SocketTimeoutException -> true
                     is IOException -> true
-                    is IllegalStateException -> {
-                        val m = e.message ?: ""
-                        // 5xx / 429 视为可重试；4xx（除 429）不重试
-                        m.contains("HTTP 5") || m.contains("HTTP 429")
-                    }
+                    is IllegalStateException -> isRateLimit || msg.contains("HTTP 5")
                     else -> false
                 }
-                if (!recoverable || i == maxAttempts - 1) throw e
-                // 退避：1s, 2s, 3s
-                delay(1000L * (i + 1))
+                if (!isRetryable || i == maxAttempts - 1) throw e
+                val backoff = if (isRateLimit) {
+                    30_000L * (i + 1)
+                } else {
+                    2_000L * (i + 1)
+                }
+                delay(backoff)
             }
         }
         throw (last ?: IllegalStateException("$step failed"))
@@ -91,6 +118,7 @@ class GitHubWriteRepository @Inject constructor(
     suspend fun uploadOrUpdateFile(owner: String, repo: String, path: String, content: String, message: String = "update $path", branch: String? = null) {
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
         val sha = getFileSha(owner, repo, path)
+        rateGate()
         call("updateFile") {
             api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch))
         }
@@ -100,6 +128,7 @@ class GitHubWriteRepository @Inject constructor(
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
         var last: Throwable? = null
         for (i in 0 until maxAttempts) {
+            rateGate()
             val r = runCatching {
                 api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, null, branch))
             }
@@ -109,6 +138,7 @@ class GitHubWriteRepository @Inject constructor(
             last = c
             val sha = getFileSha(owner, repo, path)
             if (sha != null) {
+                rateGate()
                 call("updateFile") { api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch)) }
                 return
             }
@@ -128,6 +158,7 @@ class GitHubWriteRepository @Inject constructor(
 
     /**
      * 批量上传：Git Data API 一次提交全部文件。
+     * 所有 blob 写请求经过 rateGate() 节流，避免触发次级限流。
      */
     suspend fun uploadAllFiles(
         owner: String,
@@ -135,14 +166,13 @@ class GitHubWriteRepository @Inject constructor(
         files: Map<String, String>,
         message: String = "batch upload",
         branch: String? = null,
-        blobConcurrency: Int = 6,
+        blobConcurrency: Int = 3,
         onProgress: (suspend (Int, Int, String) -> Unit)? = null
     ): Int = withContext(Dispatchers.IO) {
         if (files.isEmpty()) return@withContext 0
 
         val br = resolveBranch(owner, repo, branch)
 
-        // 空仓库激活
         val existingRef = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         if (existingRef == null) {
             val seed = Base64.encodeToString(
@@ -166,7 +196,7 @@ class GitHubWriteRepository @Inject constructor(
                 chunk.map { (path, content) ->
                     async {
                         val b64 = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
-                        // 单个 blob 创建带重试：超时 / 5xx 自动重试，不拖垮整批
+                        rateGate()
                         val blob: BlobResponse = callWithRetry("createBlob:$path") {
                             api.createBlob(owner, repo, CreateBlobRequest(b64))
                         }
@@ -196,6 +226,7 @@ class GitHubWriteRepository @Inject constructor(
 
     suspend fun deleteFile(owner: String, repo: String, path: String, sha: String? = null, branch: String? = null) {
         val real = if (!sha.isNullOrBlank()) sha else (getFileSha(owner, repo, path) ?: throw IllegalStateException("no sha: $path"))
+        rateGate()
         call("deleteFile") {
             api.deleteFile(owner, repo, path, DeleteFileRequest("delete $path", real, branch))
         }
