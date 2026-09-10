@@ -57,4 +57,9 @@ class AccountViewModel @Inject constructor(
         tokenManager.updateAvatar(login, uri)
         refresh()
     }
+
+    fun logout() {
+        tokenManager.logout()
+        refresh()
+    }
 }
