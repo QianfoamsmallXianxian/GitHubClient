@@ -1,11 +1,16 @@
 package com.githubclient.app.ui.screens.repo
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,7 +20,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CallSplit
@@ -29,6 +37,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,9 +51,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.githubclient.app.data.model.Commit
 import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.ui.components.EmptyState
@@ -57,9 +68,6 @@ fun RepoScreen(
     name: String,
     onBack: () -> Unit,
     onOpenActions: () -> Unit,
-    onOpenIssues: () -> Unit,
-    onOpenPulls: () -> Unit,
-    onOpenReleases: () -> Unit,
     onDeleted: () -> Unit = {},
     viewModel: RepoViewModel = hiltViewModel()
 ) {
@@ -67,9 +75,15 @@ fun RepoScreen(
     val contents by viewModel.contents.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val message by viewModel.message.collectAsState()
+    val commits by viewModel.commits.collectAsState()
+    val isCommitsLoading by viewModel.isCommitsLoading.collectAsState()
+    val context = LocalContext.current
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCommitsDialog by remember { mutableStateOf(false) }
+    var showSearchBar by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(owner, name) { viewModel.loadRepo(owner, name) }
     LaunchedEffect(owner, name, currentPath) { viewModel.loadContents(owner, name, currentPath) }
@@ -117,7 +131,42 @@ fun RepoScreen(
                     )
                 }
             }
-            repo?.let { item(key = "header") { RepoHeader(it, onOpenIssues, onOpenPulls, onOpenReleases) } }
+            repo?.let { r ->
+                item(key = "header") {
+                    RepoHeader(
+                        repo = r,
+                        onOpenCommits = {
+                            viewModel.loadCommits(owner, name)
+                            showCommitsDialog = true
+                        },
+                        onCopyLink = {
+                            copyToClipboard(context, "https://github.com/$owner/$name")
+                        },
+                        onToggleSearch = {
+                            showSearchBar = !showSearchBar
+                            if (!showSearchBar) {
+                                searchQuery = ""
+                                viewModel.filterContents("")
+                            }
+                        }
+                    )
+                }
+            }
+            if (showSearchBar) {
+                item(key = "search") {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            viewModel.filterContents(it)
+                        },
+                        label = { Text("搜索文件") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    )
+                }
+            }
             item(key = "files_header") { Text("文件", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall) }
             if (isLoading && contents.isEmpty()) {
                 item(key = "loading") { LoadingState() }
@@ -160,14 +209,56 @@ fun RepoScreen(
             }
         )
     }
+
+    if (showCommitsDialog) {
+        AlertDialog(
+            onDismissRequest = { showCommitsDialog = false },
+            title = { Text("提交历史") },
+            text = {
+                if (isCommitsLoading) {
+                    LoadingState()
+                } else if (commits.isEmpty()) {
+                    Text("暂无提交记录")
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().height(320.dp)) {
+                        items(commits) { c ->
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    c.commit?.message?.lineSequence()?.firstOrNull() ?: "(无提交信息)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${c.sha.take(7)}  ${c.commit?.author?.name ?: ""}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCommitsDialog = false }) { Text("关闭") }
+            }
+        )
+    }
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+    runCatching {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("repo", text))
+    }
 }
 
 @Composable
 private fun RepoHeader(
     repo: Repository,
-    onOpenIssues: () -> Unit,
-    onOpenPulls: () -> Unit,
-    onOpenReleases: () -> Unit
+    onOpenCommits: () -> Unit,
+    onCopyLink: () -> Unit,
+    onToggleSearch: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -196,9 +287,9 @@ private fun RepoHeader(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(onClick = onOpenIssues) { Icon(Icons.Default.BugReport, contentDescription = null); Text("Issues") }
-                Button(onClick = onOpenPulls) { Icon(Icons.Default.CallSplit, contentDescription = null); Text("PRs") }
-                Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
+                Button(onClick = onOpenCommits) { Icon(Icons.Default.History, contentDescription = null); Text("提交历史") }
+                Button(onClick = onCopyLink) { Icon(Icons.Default.Link, contentDescription = null); Text("复制链接") }
+                Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("代码搜索") }
             }
         }
     }
