@@ -1,8 +1,10 @@
 package com.githubclient.app.automation
 
+import android.content.Context
 import com.githubclient.app.data.repository.GitHubRepository
 import com.githubclient.app.data.repository.GitHubWriteRepository
 import com.githubclient.app.di.ApplicationScope
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -31,11 +33,12 @@ sealed interface ZipUploadState {
 
 /**
  * ZIP 上传的单例管理器。
- * 状态与任务都放在应用级作用域里，切后台 / 离开页面不会中断，
- * 回到页面时还能看到实时进度。
+ * 状态与任务都放在应用级作用域里，切后台 / 离开页面不会中断。
+ * 另外通过前台服务保活，避免熄屏 / 切后台时进程被系统回收导致中断。
  */
 @Singleton
 class ZipUploadManager @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val writeRepository: GitHubWriteRepository,
     private val repository: GitHubRepository,
     @ApplicationScope private val appScope: CoroutineScope
@@ -43,11 +46,11 @@ class ZipUploadManager @Inject constructor(
     private val _state = MutableStateFlow<ZipUploadState>(ZipUploadState.Idle)
     val state: StateFlow<ZipUploadState> = _state
 
-    /** 上传并发数，与 AutoRepoManager 保持一致 */
     private val uploadConcurrency = 8
-
-    /** 提取阶段每处理 N 个条目才刷一次进度，避免高频 state 更新拖慢解压 */
     private val progressEvery = 25
+
+    /** 通知刷新节流：每 N 个文件才更新一次前台通知，避免频繁 startService */
+    private val notifyEvery = 10
 
     private val textExtensions = setOf(
         "kt", "java", "xml", "kts", "gradle", "properties", "toml", "md",
@@ -64,9 +67,9 @@ class ZipUploadManager @Inject constructor(
         ) {
             return
         }
-        // 同步占位：在启动协程前就把状态置为 Loading。
-        // 否则协程调度有延迟，这期间状态仍是 Idle，用户连点两次会启动两个并发上传。
         _state.value = ZipUploadState.Loading
+        // 立即拉起前台服务，进程在后台也不会被回收
+        UploadForegroundService.start(appContext, "准备解压源码包...")
         appScope.launch { runUpload(owner, repo, zipBytes, autoTriggerBuild) }
     }
 
@@ -95,9 +98,8 @@ class ZipUploadManager @Inject constructor(
             val failedLock = Mutex()
 
             _state.value = ZipUploadState.Progress(0, total, "")
+            UploadForegroundService.update(appContext, "开始上传 0/$total", 0, total)
 
-            // 分块并发上传：每块 uploadConcurrency 个并行，块间串行，
-            // 既缩短总耗时，又不会一次性抛出上千请求触发 GitHub 限流。
             files.entries.chunked(uploadConcurrency).forEach { chunk ->
                 coroutineScope {
                     chunk.map { (path, content) ->
@@ -117,9 +119,16 @@ class ZipUploadManager @Inject constructor(
                                     failed.add("$path: ${error.message}")
                                 }
                             }
-                            _state.value = ZipUploadState.Progress(
-                                done.incrementAndGet(), total, path
-                            )
+                            val now = done.incrementAndGet()
+                            _state.value = ZipUploadState.Progress(now, total, path)
+                            if (now % notifyEvery == 0 || now == total) {
+                                UploadForegroundService.update(
+                                    appContext,
+                                    "上传 $now/$total",
+                                    now,
+                                    total
+                                )
+                            }
                         }
                     }.awaitAll()
                 }
@@ -140,14 +149,12 @@ class ZipUploadManager @Inject constructor(
             )
         } catch (e: Exception) {
             _state.value = ZipUploadState.Error(e.message ?: "ZIP 上传失败")
+        } finally {
+            // 无论成功失败，都要撤下前台服务，否则通知会一直挂着
+            UploadForegroundService.stop(appContext)
         }
     }
 
-    /**
-     * 直接在内存里解包，不落临时文件。
-     * commons-compress 的 ZipFile.Builder 支持 setByteArray，内部会包成
-     * SeekableInMemoryByteChannel，省掉「写盘 → 再读回来」的完整往返。
-     */
     private fun extractTextFilesWithProgress(zipBytes: ByteArray): Map<String, String> {
         val files = linkedMapOf<String, String>()
         ZipFile.builder().setByteArray(zipBytes).get().use { zip ->
@@ -165,7 +172,6 @@ class ZipUploadManager @Inject constructor(
                 val ext = path.substringAfterLast('.', "").lowercase()
                 val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
                 if (ext in textExtensions || isGitignore) {
-                    // 降低状态刷新频率，解压大包时明显更快
                     if (current % progressEvery == 0 || current == totalEntries) {
                         _state.value = ZipUploadState.Extracting(current, totalEntries, path)
                     }

@@ -44,6 +44,13 @@
                     android:scheme="githubclient" />
             </intent-filter>
         </activity>
+
+        <!-- 上传期间的前台服务：防止熄屏 / 切后台时进程被系统回收 -->
+        <service
+            android:name=".automation.UploadForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

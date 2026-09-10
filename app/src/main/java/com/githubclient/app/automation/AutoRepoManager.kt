@@ -1,8 +1,10 @@
 package com.githubclient.app.automation
 
+import android.content.Context
 import com.githubclient.app.data.repository.GitHubRepository
 import com.githubclient.app.data.repository.GitHubWriteRepository
 import com.githubclient.app.di.ApplicationScope
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -29,6 +31,7 @@ sealed interface AutoRepoState {
 
 @Singleton
 class AutoRepoManager @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val githubRepository: GitHubRepository,
     private val writeRepository: GitHubWriteRepository,
     private val scanner: LocalProjectScanner,
@@ -37,20 +40,13 @@ class AutoRepoManager @Inject constructor(
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
 
-    /**
-     * 上传并发数。
-     * 8 是速度与稳定的折中：太高容易触发 GitHub 的次级限流（abuse detection），
-     * 反而被延迟或拒绝。
-     */
     private val uploadConcurrency = 8
 
-    /** 只扫描预览，不创建仓库 */
+    /** 通知刷新节流：每 N 个文件才更新一次前台通知 */
+    private val notifyEvery = 10
+
     fun previewScan(path: String): LocalProjectScanner.ScanResult = scanner.scanDirectory(path)
 
-    /**
-     * 启动上传任务。
-     * 跑在应用级作用域里，切后台、锁屏、离开页面都不会中断。
-     */
     fun start(repoName: String, description: String?, isPrivate: Boolean, localPath: String) {
         if (_state.value is AutoRepoState.Scanning ||
             _state.value is AutoRepoState.Creating ||
@@ -58,9 +54,9 @@ class AutoRepoManager @Inject constructor(
         ) {
             return
         }
-        // 同步占位：在启动协程前就置为 Scanning。
-        // 否则协程调度有延迟，这期间状态仍是 Idle，用户连点两次会并发建两个仓库。
         _state.value = AutoRepoState.Scanning("扫描本地目录...")
+        // 拉起前台服务，保证切后台 / 熄屏时进程不被回收
+        UploadForegroundService.start(appContext, "扫描本地目录...")
         appScope.launch {
             createRepoAndUploadDirectory(repoName, description, isPrivate, localPath)
         }
@@ -83,6 +79,7 @@ class AutoRepoManager @Inject constructor(
             }
 
             _state.value = AutoRepoState.Creating("创建远程仓库 $repoName...")
+            UploadForegroundService.update(appContext, "创建远程仓库 $repoName...", 0, 0)
             val repo = writeRepository.createRepository(repoName, description, isPrivate, autoInit = false)
             val owner = githubRepository.getCurrentUser().login
 
@@ -92,17 +89,13 @@ class AutoRepoManager @Inject constructor(
             val failedLock = Mutex()
 
             _state.value = AutoRepoState.Uploading(0, total)
+            UploadForegroundService.update(appContext, "开始上传 0/$total", 0, total)
 
-            // 分块并发上传：每块 uploadConcurrency 个文件并行，块与块之间串行。
-            // 这样把原来 1005 次串行请求压成约 1/8 的等待时间，
-            // 同时又不会一次性抛出上千个请求触发限流。
             scanResult.files.chunked(uploadConcurrency).forEach { chunk ->
                 coroutineScope {
                     chunk.map { file ->
                         async {
                             val error = runCatching {
-                                // 新仓库里文件都是全新的，sha 传 null 即可创建，
-                                // 省掉每个文件一次多余的 GET 查询（1005 个文件少一半请求）。
                                 writeRepository.uploadNewFile(
                                     owner = owner,
                                     repo = repo.name,
@@ -117,7 +110,16 @@ class AutoRepoManager @Inject constructor(
                                     failed.add("${file.relativePath}: ${error.message ?: "未知错误"}")
                                 }
                             }
-                            _state.value = AutoRepoState.Uploading(done.incrementAndGet(), total)
+                            val now = done.incrementAndGet()
+                            _state.value = AutoRepoState.Uploading(now, total)
+                            if (now % notifyEvery == 0 || now == total) {
+                                UploadForegroundService.update(
+                                    appContext,
+                                    "上传 $now/$total",
+                                    now,
+                                    total
+                                )
+                            }
                         }
                     }.awaitAll()
                 }
@@ -137,6 +139,9 @@ class AutoRepoManager @Inject constructor(
         }.onFailure { e ->
             _state.value = AutoRepoState.Error(e.message ?: "自动创建仓库失败")
         }
+    }.also {
+        // 任务收尾（无论成败）都要撤下前台服务
+        UploadForegroundService.stop(appContext)
     }
 
     fun reset() {
