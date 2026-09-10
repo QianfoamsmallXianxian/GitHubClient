@@ -13,9 +13,14 @@ data class AccountEntity(
     val tokenRef: String
 )
 
+/**
+ * 仓库缓存。
+ * accountLogin 用于区分不同账号的缓存，避免切换账号后看到上一个账号的仓库列表。
+ */
 @Entity(tableName = "repo_cache")
 data class RepoCacheEntity(
     @PrimaryKey val id: Long,
+    val accountLogin: String = "",
     val name: String,
     val fullName: String,
     val ownerLogin: String,
