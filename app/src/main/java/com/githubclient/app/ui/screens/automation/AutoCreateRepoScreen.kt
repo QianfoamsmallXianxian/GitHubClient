@@ -30,7 +30,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,8 +39,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,8 +56,10 @@ fun AutoCreateRepoScreen(
     var isPrivate by remember { mutableStateOf(false) }
     var localPath by remember { mutableStateOf("/sdcard/Download/GitHubClient") }
     var hasStoragePermission by remember { mutableStateOf(false) }
-    var previewText by remember { mutableStateOf<String?>(null) }
+
     val state by viewModel.state.collectAsState()
+    val previewText by viewModel.preview.collectAsState()
+    val isPreviewing by viewModel.isPreviewing.collectAsState()
     val context = LocalContext.current
 
     fun refreshPermission() {
@@ -65,16 +70,27 @@ fun AutoCreateRepoScreen(
         }
     }
 
-    LaunchedEffect(Unit) { refreshPermission() }
+    // 从系统「所有文件访问权限」页面返回时会触发 ON_RESUME，自动重新检测，
+    // 不用再手动点「我已授权，重新检测」。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshPermission()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        refreshPermission()
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     fun requestStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             runCatching {
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                    Uri.parse("package:${context.packageName}")
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:${context.packageName}")
+                    )
                 )
-                context.startActivity(intent)
             }.onFailure {
                 runCatching {
                     context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
@@ -98,7 +114,6 @@ fun AutoCreateRepoScreen(
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)
         ) {
-            // 权限提示区
             if (!hasStoragePermission) {
                 Text(
                     "需要“所有文件访问权限”才能读取本地项目目录",
@@ -107,9 +122,7 @@ fun AutoCreateRepoScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick = {
-                        requestStoragePermission()
-                    },
+                    onClick = { requestStoragePermission() },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("授予所有文件访问权限") }
                 Spacer(Modifier.height(8.dp))
@@ -137,7 +150,10 @@ fun AutoCreateRepoScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = localPath,
-                onValueChange = { localPath = it },
+                onValueChange = {
+                    localPath = it
+                    viewModel.clearPreview()
+                },
                 label = { Text("本地项目目录 *") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -145,19 +161,10 @@ fun AutoCreateRepoScreen(
 
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = {
-                    val result = viewModel.previewScan(localPath)
-                    previewText = buildString {
-                        append("扫描到 ${result.totalFiles} 个可上传文件")
-                        append("，共 ${result.totalSize / 1024} KB")
-                        if (result.skippedFiles.isNotEmpty()) {
-                            append("\n跳过 ${result.skippedFiles.size} 项，例如：")
-                            append(result.skippedFiles.take(3).joinToString("、"))
-                        }
-                    }
-                },
+                onClick = { viewModel.previewScan(localPath) },
+                enabled = !isPreviewing,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("先检测目录") }
+            ) { Text(if (isPreviewing) "检测中..." else "先检测目录") }
 
             previewText?.let {
                 Spacer(Modifier.height(6.dp))
