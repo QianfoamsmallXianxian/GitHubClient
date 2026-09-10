@@ -2,6 +2,8 @@ package com.githubclient.app.ui.screens.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.githubclient.app.data.auth.AccountProfile
+import com.githubclient.app.data.auth.TokenManager
 import com.githubclient.app.data.local.RepoCacheEntity
 import com.githubclient.app.data.model.User
 import com.githubclient.app.data.repository.GitHubRepository
@@ -15,7 +17,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: GitHubRepository
+    private val repository: GitHubRepository,
+    private val tokenManager: TokenManager
 ) : ViewModel() {
 
     val repos: StateFlow<List<RepoCacheEntity>> = repository.observeRepos()
@@ -26,6 +29,10 @@ class HomeViewModel @Inject constructor(
 
     private val _user = MutableStateFlow<User?>(null)
     val user: StateFlow<User?> = _user
+
+    /** 右上角头像：优先使用接口返回的头像，缺失时回退到已保存的账号档案头像 */
+    private val _avatarUrl = MutableStateFlow<String?>(null)
+    val avatarUrl: StateFlow<String?> = _avatarUrl
 
     init {
         refresh()
@@ -38,7 +45,7 @@ class HomeViewModel @Inject constructor(
             try {
                 repository.fetchRepos(forceRefresh = true)
             } catch (e: Exception) {
-                // TODO: 错误处理
+                // 错误处理
             } finally {
                 _isLoading.value = false
             }
@@ -48,7 +55,32 @@ class HomeViewModel @Inject constructor(
     fun loadUser() {
         viewModelScope.launch {
             runCatching { repository.getCurrentUser() }
-                .onSuccess { _user.value = it }
+                .onSuccess { u ->
+                    _user.value = u
+                    val avatar = u.avatarUrl
+                    if (!avatar.isNullOrBlank()) {
+                        _avatarUrl.value = avatar
+                    } else {
+                        _avatarUrl.value = tokenManager.currentAccount()?.avatarUrl
+                    }
+                    // 同步账号档案头像，保证多账号切换时头像正确
+                    tokenManager.getToken()?.let { tk ->
+                        if (tk.isNotBlank()) {
+                            tokenManager.addOrUpdateAccount(
+                                AccountProfile(
+                                    login = u.login,
+                                    token = tk,
+                                    avatarUrl = u.avatarUrl ?: tokenManager.currentAccount()?.avatarUrl,
+                                    name = u.name
+                                )
+                            )
+                        }
+                    }
+                }
+                .onFailure {
+                    // 接口失败时尽量用本地档案头像兜底，避免出现空头像
+                    _avatarUrl.value = tokenManager.currentAccount()?.avatarUrl
+                }
         }
     }
 }
