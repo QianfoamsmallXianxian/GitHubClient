@@ -21,6 +21,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
+import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,8 +32,7 @@ class GitHubWriteRepository @Inject constructor(
     private val api: GitHubApi
 ) {
     /**
-     * 包一层 HTTP 调用：把 GitHub 返回的错误正文带进异常消息。
-     * 否则 422 / 400 这类错误只能看到 "HTTP 422"，无法定位原因。
+     * 包一层：把 GitHub 返回的错误正文带进异常消息，便于定位 4xx。
      */
     private suspend fun <T> call(step: String, block: suspend () -> T): T {
         try {
@@ -41,6 +42,42 @@ class GitHubWriteRepository @Inject constructor(
             val detail = body?.take(400) ?: e.message()
             throw IllegalStateException("[$step] HTTP ${e.code()}: $detail", e)
         }
+    }
+
+    /**
+     * 带重试的调用。
+     *
+     * 批量上传时，个别请求超时 / 5xx 很常见。原来一旦某个请求失败，
+     * 整批上传就中断，表现就是「传到一半超时」。
+     * 这里对可恢复错误退避重试，避免单点失败拖垮整批。
+     */
+    private suspend fun <T> callWithRetry(
+        step: String,
+        maxAttempts: Int = 4,
+        block: suspend () -> T
+    ): T {
+        var last: Throwable? = null
+        for (i in 0 until maxAttempts) {
+            try {
+                return call(step, block)
+            } catch (e: Throwable) {
+                last = e
+                val recoverable = when (e) {
+                    is SocketTimeoutException -> true
+                    is IOException -> true
+                    is IllegalStateException -> {
+                        val m = e.message ?: ""
+                        // 5xx / 429 视为可重试；4xx（除 429）不重试
+                        m.contains("HTTP 5") || m.contains("HTTP 429")
+                    }
+                    else -> false
+                }
+                if (!recoverable || i == maxAttempts - 1) throw e
+                // 退避：1s, 2s, 3s
+                delay(1000L * (i + 1))
+            }
+        }
+        throw (last ?: IllegalStateException("$step failed"))
     }
 
     suspend fun createRepository(name: String, description: String? = null, isPrivate: Boolean = false, autoInit: Boolean = true) =
@@ -129,7 +166,8 @@ class GitHubWriteRepository @Inject constructor(
                 chunk.map { (path, content) ->
                     async {
                         val b64 = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
-                        val blob: BlobResponse = call("createBlob") {
+                        // 单个 blob 创建带重试：超时 / 5xx 自动重试，不拖垮整批
+                        val blob: BlobResponse = callWithRetry("createBlob:$path") {
                             api.createBlob(owner, repo, CreateBlobRequest(b64))
                         }
                         lock.withLock { items.add(TreeItem(path, "100644", "blob", blob.sha)) }
@@ -142,16 +180,16 @@ class GitHubWriteRepository @Inject constructor(
         val parent = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
 
-        val tree = call("createTree") {
+        val tree = callWithRetry("createTree") {
             api.createTree(owner, repo, CreateTreeRequest(items, base))
         }
-        val commit = call("createCommit") {
+        val commit = callWithRetry("createCommit") {
             api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
         }
         if (parent != null) {
-            call("updateRef") { api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false)) }
+            callWithRetry("updateRef") { api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false)) }
         } else {
-            call("createRef") { api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha)) }
+            callWithRetry("createRef") { api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha)) }
         }
         total
     }

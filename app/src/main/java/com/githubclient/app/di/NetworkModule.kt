@@ -40,8 +40,6 @@ object NetworkModule {
             }
         }
 
-        // 批量上传需要并发。默认 OkHttp 每主机上限只有 5，会卡住并发上传，
-        // 这里放宽到 16，配合连接池复用，批量上传速度提升明显。
         val dispatcher = Dispatcher().apply {
             maxRequests = 64
             maxRequestsPerHost = 16
@@ -49,27 +47,25 @@ object NetworkModule {
 
         return OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
+            // 上传大仓库时 GitHub 偶发响应慢，60s 容易在批量中途超时。
+            // 放宽到 120s，配合上层的超时重试，减少「传到一半断掉」。
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(180, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .dispatcher(dispatcher)
             .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
-            // GitHub 的 Actions 日志接口会 302 到对象存储，需要跟随重定向
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
                 val request = chain.request()
                 val host = request.url.host
 
-                // 只给 GitHub API 注入认证头。
-                // 之前对所有请求无条件注入，会污染用户配置的第三方 AI 服务：
-                // 那些请求自己已经带了 Authorization，加上这里再 addHeader 会变成两个
-                // Authorization 头，服务端取第一个（GitHub token）后必然 401。
                 val isGitHubApi = host == "api.github.com"
                 val token = tokenManager.getToken()
 
                 val newRequest = if (isGitHubApi && !token.isNullOrBlank()) {
                     request.newBuilder()
-                        // 用 header() 是替换，避免与调用方已设置的头重复
                         .header("Authorization", "Bearer $token")
                         .header("Accept", "application/vnd.github+json")
                         .build()
