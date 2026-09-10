@@ -9,16 +9,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,22 +38,15 @@ fun FileContentDialog(
     name: String,
     file: RepoContent,
     onDismiss: () -> Unit,
-    viewModel: RepoViewModel
+    viewModel: RepoViewModel,
+    onDelete: (() -> Unit)? = null
 ) {
     val fileContent by viewModel.fileContent.collectAsState()
     val isFileLoading by viewModel.isFileLoading.collectAsState()
-    val message by viewModel.message.collectAsState()
-    var isEditing by remember { mutableStateOf(false) }
-    var editableText by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(owner, name, file.path) {
         viewModel.loadFileContent(owner, name, file.path)
-    }
-
-    LaunchedEffect(fileContent) {
-        if (!isEditing && fileContent != null) {
-            editableText = fileContent ?: ""
-        }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -71,10 +60,6 @@ fun FileContentDialog(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 返回按钮
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
                     Icon(
                         Icons.Default.InsertDriveFile,
                         contentDescription = null,
@@ -88,70 +73,42 @@ fun FileContentDialog(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
                     )
-                    if (!isEditing) {
-                        IconButton(onClick = {
-                            editableText = fileContent ?: ""
-                            isEditing = true
-                        }) {
-                            Icon(Icons.Default.Edit, contentDescription = "编辑")
+                    if (onDelete != null) {
+                        IconButton(onClick = { confirmDelete = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除文件", tint = MaterialTheme.colorScheme.error)
                         }
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(Icons.Default.Close, contentDescription = "关闭")
                     }
                 }
-
-                message?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-
                 if (isFileLoading) {
                     LoadingState()
-                } else if (isEditing) {
-                    OutlinedTextField(
-                        value = editableText,
-                        onValueChange = { editableText = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState()),
-                        textStyle = MaterialTheme.typography.bodySmall
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End
-                    ) {
-                        Button(
-                            onClick = {
-                                viewModel.saveFileContent(
-                                    owner = owner,
-                                    name = name,
-                                    path = file.path,
-                                    content = editableText,
-                                )
-                                isEditing = false
-                            }
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null)
-                            Text("保存")
-                        }
-                    }
                 } else {
                     Text(
                         text = fileContent ?: "无法加载文件内容",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
             }
         }
+    }
+
+    if (confirmDelete && onDelete != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除文件") },
+            text = { Text("确定要删除「${file.name}」吗？") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+            }
+        )
     }
 }
