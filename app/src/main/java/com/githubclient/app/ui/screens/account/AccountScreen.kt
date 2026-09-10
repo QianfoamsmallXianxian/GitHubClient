@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.githubclient.app.data.auth.GitHubAccount
+import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,15 +70,17 @@ fun AccountScreen(
             TopAppBar(
                 title = { Text("账号管理") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
                 }
             )
         }
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(Dimens.ListPadding),
+            verticalArrangement = Arrangement.spacedBy(Dimens.Sm)
         ) {
             items(accounts, key = { it.login }) { account ->
                 AccountCard(
@@ -87,35 +91,41 @@ fun AccountScreen(
                 )
             }
             item(key = "actions") {
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = { showSwitchDialog = true },
-                    enabled = accounts.size > 1,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = Dimens.Sm),
+                    // 四个功能按钮统一间距，不再逐个插 Spacer
+                    verticalArrangement = Arrangement.spacedBy(Dimens.Sm)
                 ) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = null)
-                    Text("切换账号")
-                }
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Text("添加账号")
-                }
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = onOpenTokenSettings, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Info, contentDescription = null)
-                    Text("账号信息")
-                }
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        viewModel.logout()
-                        onLogout()
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.AccountCircle, contentDescription = null)
-                    Text("退出登录")
+                    Button(
+                        onClick = { showSwitchDialog = true },
+                        enabled = accounts.size > 1,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(Dimens.IconSm))
+                        Spacer(Modifier.width(Dimens.Sm))
+                        Text("切换账号")
+                    }
+                    Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(Dimens.IconSm))
+                        Spacer(Modifier.width(Dimens.Sm))
+                        Text("添加账号")
+                    }
+                    Button(onClick = onOpenTokenSettings, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(Dimens.IconSm))
+                        Spacer(Modifier.width(Dimens.Sm))
+                        Text("账号信息")
+                    }
+                    Button(
+                        onClick = {
+                            viewModel.logout()
+                            onLogout()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(Dimens.IconSm))
+                        Spacer(Modifier.width(Dimens.Sm))
+                        Text("退出登录")
+                    }
                 }
             }
         }
@@ -166,31 +176,44 @@ private fun SwitchAccountDialog(
                                 .clickable(enabled = acc.login != activeLogin) { onSwitch(acc.login) }
                                 .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.Md)
                         ) {
                             if (acc.avatarUrl.isNullOrBlank()) {
                                 Icon(
                                     Icons.Default.AccountCircle,
                                     contentDescription = null,
-                                    modifier = Modifier.size(36.dp).clip(CircleShape),
+                                    modifier = Modifier.size(Dimens.AvatarSm).clip(CircleShape),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             } else {
                                 AsyncImage(
                                     model = acc.avatarUrl,
                                     contentDescription = null,
-                                    modifier = Modifier.size(36.dp).clip(CircleShape)
+                                    modifier = Modifier.size(Dimens.AvatarSm).clip(CircleShape)
                                 )
                             }
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(acc.nickname ?: acc.login, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("@${acc.login}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    acc.nickname ?: acc.login,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "@${acc.login}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             if (acc.login == activeLogin) {
-                                Icon(Icons.Default.Check, contentDescription = "当前", tint = MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "当前",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
-                        HorizontalDivider()
+                        HorizontalDivider(thickness = Dimens.Divider)
                     }
                 }
             }
@@ -211,29 +234,30 @@ private fun AccountCard(
     Card(
         modifier = Modifier.fillMaxWidth().clickable(enabled = !isActive, onClick = onSwitch),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = Dimens.CardElevation)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(Dimens.ListPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (account.avatarUrl.isNullOrBlank()) {
                 Icon(
                     Icons.Default.AccountCircle,
                     contentDescription = null,
-                    modifier = Modifier.size(44.dp).clip(CircleShape),
+                    modifier = Modifier.size(Dimens.AvatarMd).clip(CircleShape),
                     tint = MaterialTheme.colorScheme.primary
                 )
             } else {
                 AsyncImage(
                     model = account.avatarUrl,
                     contentDescription = null,
-                    modifier = Modifier.size(44.dp).clip(CircleShape)
+                    modifier = Modifier.size(Dimens.AvatarMd).clip(CircleShape)
                 )
             }
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Column(modifier = Modifier.weight(1f).padding(horizontal = Dimens.Md)) {
                 Text(account.nickname ?: account.login, style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (isActive) "当前账号" else "点击切换",
@@ -242,7 +266,11 @@ private fun AccountCard(
                 )
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "删除账号", tint = MaterialTheme.colorScheme.error)
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "删除账号",
+                    tint = MaterialTheme.colorScheme.error
+                )
             }
         }
     }
@@ -259,14 +287,24 @@ private fun AddAccountDialog(
         onDismissRequest = onDismiss,
         title = { Text("添加账号") },
         text = {
-            Column {
-                OutlinedTextField(value = token, onValueChange = { token = it }, label = { Text("GitHub Token") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = login, onValueChange = { login = it }, label = { Text("用户名(可选)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.Sm)) {
+                OutlinedTextField(
+                    value = token, onValueChange = { token = it },
+                    label = { Text("GitHub Token") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = login, onValueChange = { login = it },
+                    label = { Text("用户名(可选)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onAdd(token.trim(), login.trim()) }, enabled = token.isNotBlank()) { Text("添加") }
+            TextButton(
+                onClick = { onAdd(token.trim(), login.trim()) },
+                enabled = token.isNotBlank()
+            ) { Text("添加") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
