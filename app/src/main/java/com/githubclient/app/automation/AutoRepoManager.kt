@@ -2,9 +2,12 @@ package com.githubclient.app.automation
 
 import com.githubclient.app.data.repository.GitHubRepository
 import com.githubclient.app.data.repository.GitHubWriteRepository
+import com.githubclient.app.di.ApplicationScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,15 +25,32 @@ sealed interface AutoRepoState {
 class AutoRepoManager @Inject constructor(
     private val githubRepository: GitHubRepository,
     private val writeRepository: GitHubWriteRepository,
-    private val scanner: LocalProjectScanner
+    private val scanner: LocalProjectScanner,
+    @ApplicationScope private val appScope: CoroutineScope
 ) {
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
 
-    /** 只扫描预览，不创建仓库，方便用户在界面上确认目录是否正确 */
+    /** 只扫描预览，不创建仓库 */
     fun previewScan(path: String): LocalProjectScanner.ScanResult = scanner.scanDirectory(path)
 
-    suspend fun createRepoAndUploadDirectory(
+    /**
+     * 启动上传任务。
+     * 跑在应用级作用域里，切后台、锁屏、离开页面都不会中断。
+     */
+    fun start(repoName: String, description: String?, isPrivate: Boolean, localPath: String) {
+        if (_state.value is AutoRepoState.Scanning ||
+            _state.value is AutoRepoState.Creating ||
+            _state.value is AutoRepoState.Uploading
+        ) {
+            return
+        }
+        appScope.launch {
+            createRepoAndUploadDirectory(repoName, description, isPrivate, localPath)
+        }
+    }
+
+    private suspend fun createRepoAndUploadDirectory(
         repoName: String,
         description: String?,
         isPrivate: Boolean,
