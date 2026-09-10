@@ -55,7 +55,6 @@ import com.githubclient.app.data.auth.GitHubAccount
 fun AccountScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
-    onOpenCreateRepo: () -> Unit,
     onOpenRepositories: () -> Unit,
     onOpenTokenSettings: () -> Unit,
     viewModel: AccountViewModel = hiltViewModel()
@@ -72,7 +71,6 @@ fun AccountScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 }
-                // 右上角的 "+" 图标已按要求移除
             )
         }
     ) { padding ->
@@ -91,7 +89,6 @@ fun AccountScreen(
             }
             item(key = "actions") {
                 Spacer(Modifier.height(8.dp))
-                // 切换账号入口，位于"添加账号"上方
                 Button(
                     onClick = { showSwitchDialog = true },
                     enabled = accounts.size > 1,
@@ -106,9 +103,9 @@ fun AccountScreen(
                     Text("添加账号")
                 }
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onOpenCreateRepo, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Text("创建仓库")
+                Button(onClick = onOpenRepositories, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Info, contentDescription = null)
+                    Text("仓库列表")
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onOpenTokenSettings, modifier = Modifier.fillMaxWidth()) {
