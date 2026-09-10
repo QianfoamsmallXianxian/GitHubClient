@@ -18,20 +18,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.BugReport
-import androidx.compose.material.icons.filled.CallSplit
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -95,7 +95,11 @@ fun RepoScreen(
     var copyHint by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(owner, name) { viewModel.loadRepo(owner, name) }
-    LaunchedEffect(owner, name, currentPath) { viewModel.loadContents(owner, name, currentPath) }
+    LaunchedEffect(owner, name, currentPath) {
+        viewModel.loadContents(owner, name, currentPath)
+        selectionMode = false
+        viewModel.clearSelection()
+    }
 
     LaunchedEffect(copyHint) {
         if (copyHint != null) {
@@ -157,6 +161,7 @@ fun RepoScreen(
                         Icon(Icons.Default.Delete, contentDescription = null)
                         Text(if (isDeleting) "删除中..." else "删除选中 (${selectedPaths.size})")
                     }
+                    Button(onClick = { viewModel.selectAll() }) { Text("全选") }
                     Button(onClick = {
                         selectionMode = false
                         viewModel.clearSelection()
@@ -244,8 +249,9 @@ fun RepoScreen(
                         selected = selectedPaths.contains(item.path),
                         onDelete = { viewModel.deleteSingle(item) },
                         onLongClick = {
-                            if (!selectionMode) { selectionMode = true }
-                            if (!selectedPaths.contains(item.path)) viewModel.toggleSelect(item)
+                            // 长按进入选择模式，并全选当前目录
+                            selectionMode = true
+                            viewModel.selectAll()
                         },
                         onClick = {
                             if (selectionMode) {
