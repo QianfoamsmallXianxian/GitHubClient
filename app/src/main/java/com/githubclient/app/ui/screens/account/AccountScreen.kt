@@ -1,5 +1,6 @@
 package com.githubclient.app.ui.screens.account
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +19,6 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -88,12 +88,9 @@ fun AccountScreen(
             }
             item(key = "actions") {
                 Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = { showAddDialog = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = null)
-                    Text("切换账号")
+                Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Text("添加账号")
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onOpenCreateRepo, modifier = Modifier.fillMaxWidth()) {
@@ -139,7 +136,7 @@ private fun AccountCard(
     onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(enabled = !isActive, onClick = onSwitch),
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
         ),
@@ -164,17 +161,7 @@ private fun AccountCard(
                 )
             }
             Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(account.login, style = MaterialTheme.typography.titleMedium)
-                    IconButton(onClick = onSwitch, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            Icons.Default.SwapHoriz,
-                            contentDescription = "切换账号",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                Text(account.login, style = MaterialTheme.typography.titleMedium)
                 Text(
                     if (isActive) "当前账号" else "点击切换",
                     style = MaterialTheme.typography.bodySmall,
