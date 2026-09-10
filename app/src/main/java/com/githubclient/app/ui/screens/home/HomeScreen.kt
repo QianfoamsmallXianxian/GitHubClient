@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,9 +36,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.githubclient.app.data.local.RepoCacheEntity
 import com.githubclient.app.ui.components.EmptyState
 import com.githubclient.app.ui.components.LoadingState
@@ -48,11 +52,13 @@ fun HomeScreen(
     onOpenRepo: (String, String) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAutomation: () -> Unit,
+    onOpenPrompt: () -> Unit,
     onOpenAccount: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val repos by viewModel.repos.collectAsState(initial = emptyList())
     val isLoading by viewModel.isLoading.collectAsState()
+    val user by viewModel.user.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.refresh() }
 
@@ -62,13 +68,23 @@ fun HomeScreen(
                 title = { Text("仓库") },
                 actions = {
                     IconButton(onClick = onOpenAccount) {
-                        Icon(Icons.Default.AccountCircle, contentDescription = "账号")
+                        val avatarUrl = user?.avatarUrl
+                        if (!avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = avatarUrl,
+                                contentDescription = "账号",
+                                modifier = Modifier.size(28.dp),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.AccountCircle, contentDescription = "账号")
+                        }
                     }
                 }
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = Color.White) {
                 NavigationBarItem(
                     selected = false,
                     onClick = onOpenSearch,
@@ -80,6 +96,12 @@ fun HomeScreen(
                     onClick = onOpenAutomation,
                     icon = { Icon(Icons.Default.PlayArrow, contentDescription = "自动化") },
                     label = { Text("自动化") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onOpenPrompt,
+                    icon = { Icon(Icons.Default.SmartToy, contentDescription = "提示") },
+                    label = { Text("提示") }
                 )
             }
         }
