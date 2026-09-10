@@ -68,14 +68,17 @@ fun LoginScreen(
         )
         Spacer(Modifier.height(32.dp))
 
+        // OAuth 需要 client_secret，本仓库未内置有效密钥，因此改为引导用户
+        // 直接在 GitHub 网页生成带 repo/workflow/delete_repo 权限的 Token。
         Button(
             onClick = {
                 runCatching {
-                    val intent = Intent(
-                        Intent.ACTION_VIEW,
-                        Uri.parse("https://github.com/settings/tokens/new?scopes=repo,workflow,delete_repo&description=GitHubClient")
+                    context.startActivity(
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://github.com/settings/tokens/new?scopes=repo,workflow,delete_repo&description=GitHubClient")
+                        )
                     )
-                    context.startActivity(intent)
                 }
             },
             modifier = Modifier.fillMaxWidth()
