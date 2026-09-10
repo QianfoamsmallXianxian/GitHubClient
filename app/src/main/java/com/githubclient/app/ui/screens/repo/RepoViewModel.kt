@@ -3,6 +3,7 @@ package com.githubclient.app.ui.screens.repo
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.githubclient.app.data.model.Commit
 import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.data.repository.GitHubRepository
@@ -41,6 +42,32 @@ class RepoViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
+    private val _commits = MutableStateFlow<List<Commit>>(emptyList())
+    val commits: StateFlow<List<Commit>> = _commits
+
+    private val _isCommitsLoading = MutableStateFlow(false)
+    val isCommitsLoading: StateFlow<Boolean> = _isCommitsLoading
+
+    private var allContents: List<RepoContent> = emptyList()
+
+    fun filterContents(query: String) {
+        _contents.value = if (query.isBlank()) allContents
+        else allContents.filter { it.name.contains(query, ignoreCase = true) }
+    }
+
+    fun loadCommits(owner: String, name: String) {
+        viewModelScope.launch {
+            _isCommitsLoading.value = true
+            try {
+                _commits.value = repository.getCommits(owner, name)
+            } catch (e: Exception) {
+                _commits.value = emptyList()
+            } finally {
+                _isCommitsLoading.value = false
+            }
+        }
+    }
+
     fun deleteRepository(owner: String, name: String) {
         viewModelScope.launch {
             _message.value = null
@@ -76,8 +103,11 @@ class RepoViewModel @Inject constructor(
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _contents.value = repository.getContents(owner, name, path)
+                val list = repository.getContents(owner, name, path)
+                allContents = list
+                _contents.value = list
             } catch (e: Exception) {
+                allContents = emptyList()
                 _contents.value = emptyList()
             } finally {
                 _isLoading.value = false
