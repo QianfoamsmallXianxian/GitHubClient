@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -94,6 +93,8 @@ fun RepoScreen(
     var selectionMode by remember { mutableStateOf(false) }
     var copyHint by remember { mutableStateOf<String?>(null) }
 
+    val allSelected = contents.isNotEmpty() && selectedPaths.containsAll(contents.map { it.path })
+
     LaunchedEffect(owner, name) { viewModel.loadRepo(owner, name) }
     LaunchedEffect(owner, name, currentPath) {
         viewModel.loadContents(owner, name, currentPath)
@@ -150,7 +151,7 @@ fun RepoScreen(
             if (selectionMode) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
@@ -161,7 +162,11 @@ fun RepoScreen(
                         Icon(Icons.Default.Delete, contentDescription = null)
                         Text(if (isDeleting) "删除中..." else "删除选中 (${selectedPaths.size})")
                     }
-                    Button(onClick = { viewModel.selectAll() }) { Text("全选") }
+                    Button(onClick = {
+                        if (allSelected) viewModel.clearSelection() else viewModel.selectAll()
+                    }) {
+                        Text(if (allSelected) "取消全选" else "全选")
+                    }
                     Button(onClick = {
                         selectionMode = false
                         viewModel.clearSelection()
@@ -249,9 +254,9 @@ fun RepoScreen(
                         selected = selectedPaths.contains(item.path),
                         onDelete = { viewModel.deleteSingle(item) },
                         onLongClick = {
-                            // 长按进入选择模式，并全选当前目录
+                            // 长按进入选择模式，仅选中当前项（不自动全选）
                             selectionMode = true
-                            viewModel.selectAll()
+                            if (!selectedPaths.contains(item.path)) viewModel.toggleSelect(item)
                         },
                         onClick = {
                             if (selectionMode) {
