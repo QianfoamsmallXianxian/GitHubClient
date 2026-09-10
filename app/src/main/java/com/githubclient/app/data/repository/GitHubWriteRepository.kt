@@ -42,7 +42,7 @@ class GitHubWriteRepository @Inject constructor(
      */
     private val rateMutex = Mutex()
     private var nextAllowedAtMs = 0L
-    private val minIntervalMs = 600L   // 约 1.6 次写请求/秒
+    private val minIntervalMs = 1000L  // GitHub 官方建议写请求间隔至少 1 秒
 
     private suspend fun rateGate() {
         rateMutex.withLock {
