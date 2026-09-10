@@ -58,7 +58,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.githubclient.app.data.model.Commit
 import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.ui.components.EmptyState
@@ -71,6 +70,8 @@ fun RepoScreen(
     name: String,
     onBack: () -> Unit,
     onOpenActions: () -> Unit,
+    onOpenIssues: () -> Unit,
+    onOpenPulls: () -> Unit,
     onOpenReleases: () -> Unit,
     onDeleted: () -> Unit = {},
     viewModel: RepoViewModel = hiltViewModel()
@@ -207,6 +208,8 @@ fun RepoScreen(
                             viewModel.loadCommits(owner, name)
                             showCommitsDialog = true
                         },
+                        onOpenIssues = onOpenIssues,
+                        onOpenPulls = onOpenPulls,
                         onCopyLink = {
                             copyToClipboard(context, "https://github.com/$owner/$name")
                             copyHint = "已复制链接: https://github.com/$owner/$name"
@@ -341,6 +344,8 @@ private fun copyToClipboard(context: Context, text: String) {
 private fun RepoHeader(
     repo: Repository,
     onOpenCommits: () -> Unit,
+    onOpenIssues: () -> Unit,
+    onOpenPulls: () -> Unit,
     onCopyLink: () -> Unit,
     onOpenReleases: () -> Unit,
     onToggleSearch: () -> Unit,
@@ -369,14 +374,23 @@ private fun RepoHeader(
                 StatChip(Icons.Default.CallSplit, repo.forks.toString())
                 repo.language?.let { StatChip(Icons.Default.Code, it) }
             }
+            // 第一行：内容入口
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(onClick = onOpenCommits) { Icon(Icons.Default.History, contentDescription = null); Text("提交") }
+                Button(onClick = onOpenIssues) { Icon(Icons.Default.BugReport, contentDescription = null); Text("Issues") }
+                Button(onClick = onOpenPulls) { Icon(Icons.Default.CallSplit, contentDescription = null); Text("PRs") }
+                Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
+            }
+            // 第二行：工具操作
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Button(onClick = onCopyLink) { Icon(Icons.Default.Link, contentDescription = null); Text("链接") }
                 Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("搜索") }
-                Button(onClick = onOpenReleases) { Icon(Icons.Default.Description, contentDescription = null); Text("Releases") }
                 Button(onClick = onToggleSelection) { Icon(Icons.Default.DeleteSweep, contentDescription = null); Text("批量删") }
             }
         }
