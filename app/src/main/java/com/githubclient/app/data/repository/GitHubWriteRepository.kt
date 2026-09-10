@@ -39,14 +39,28 @@ class GitHubWriteRepository @Inject constructor(
         )
     }
 
-    suspend fun deleteFile(owner: String, repo: String, path: String, branch: String? = null) {
-        val sha = getFileSha(owner, repo, path)
-            ?: throw IllegalStateException("无法获取 $path 的 sha")
+    /**
+     * 删除单个文件。
+     * sha 已知时直接使用，避免每次删除都额外发一次 GET 请求（这是批量删除慢的主因）。
+     */
+    suspend fun deleteFile(
+        owner: String,
+        repo: String,
+        path: String,
+        sha: String? = null,
+        branch: String? = null
+    ) {
+        val realSha = if (!sha.isNullOrBlank()) {
+            sha
+        } else {
+            getFileSha(owner, repo, path)
+                ?: throw IllegalStateException("无法获取 $path 的 sha")
+        }
         api.deleteFile(
             owner = owner,
             repo = repo,
             path = path,
-            body = DeleteFileRequest(message = "delete $path", sha = sha, branch = branch)
+            body = DeleteFileRequest(message = "delete $path", sha = realSha, branch = branch)
         )
     }
 
@@ -59,7 +73,7 @@ class GitHubWriteRepository @Inject constructor(
         val results = mutableListOf<String>()
         for (path in paths) {
             runCatching {
-                deleteFile(owner, repo, path, branch)
+                deleteFile(owner = owner, repo = repo, path = path, sha = null, branch = branch)
             }.onSuccess {
                 results.add("$path: ok")
             }.onFailure { e ->
