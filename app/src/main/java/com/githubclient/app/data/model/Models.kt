@@ -106,7 +106,8 @@ data class Release(
     val prerelease: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("published_at") val publishedAt: String? = null,
-    @SerialName("html_url") val htmlUrl: String? = null
+    @SerialName("html_url") val htmlUrl: String? = null,
+    val assets: List<ReleaseAsset> = emptyList()
 )
 
 @Serializable
@@ -129,7 +130,6 @@ data class RepoContent(
     val sha: String,
     val size: Long? = null,
     @SerialName("download_url") val downloadUrl: String? = null,
-    @SerialName("html_url") val htmlUrl: String? = null,
     val content: String? = null,
     val encoding: String? = null
 )
@@ -139,7 +139,6 @@ data class Commit(
     val sha: String,
     val commit: CommitInfo? = null,
     val author: User? = null,
-    @SerialName("html_url") val htmlUrl: String? = null
 )
 
 @Serializable
@@ -161,4 +160,14 @@ data class WorkflowListResponse(
     val totalCount: Int,
     @kotlinx.serialization.SerialName("workflows")
     val workflows: List<Workflow>
+)
+
+@Serializable
+data class ReleaseAsset(
+    val id: Long,
+    val name: String,
+    @SerialName("browser_download_url") val downloadUrl: String,
+    val size: Long = 0,
+    @SerialName("download_count") val downloadCount: Int = 0,
+    @SerialName("content_type") val contentType: String? = null
 )
