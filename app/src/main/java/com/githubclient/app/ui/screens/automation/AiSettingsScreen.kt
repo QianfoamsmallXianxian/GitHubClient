@@ -1,10 +1,9 @@
 package com.githubclient.app.ui.screens.automation
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -29,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,10 +61,14 @@ fun AiSettingsScreen(
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(Dimens.ScreenPadding),
+            verticalArrangement = Arrangement.spacedBy(Dimens.Md)
         ) {
             Text("配置 OpenAI 兼容 API", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = baseUrl,
                 onValueChange = { baseUrl = it },
@@ -73,7 +77,6 @@ fun AiSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("https://api.openai.com/v1") }
             )
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = apiKey,
                 onValueChange = { apiKey = it },
@@ -81,7 +84,6 @@ fun AiSettingsScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = model,
                 onValueChange = { model = it },
@@ -90,7 +92,6 @@ fun AiSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("gpt-4o-mini") }
             )
-            Spacer(Modifier.height(16.dp))
             Button(
                 onClick = { viewModel.save(baseUrl, apiKey, model) },
                 modifier = Modifier.fillMaxWidth()
@@ -98,8 +99,11 @@ fun AiSettingsScreen(
                 Text("保存")
             }
             savedMessage?.let {
-                Spacer(Modifier.height(12.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }
