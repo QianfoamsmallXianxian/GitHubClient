@@ -56,7 +56,7 @@ class AccountViewModel @Inject constructor(
                 token = trimmedToken,
                 login = finalLogin,
                 avatarUrl = fetched?.avatarUrl,
-                nickname = fetched?.name
+                nickname = fetched?.nickname
             )
             refresh()
         }
