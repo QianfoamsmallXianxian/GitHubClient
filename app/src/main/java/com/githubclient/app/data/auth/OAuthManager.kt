@@ -64,7 +64,7 @@ class OAuthManager @Inject constructor(
             .buildUpon()
             .appendQueryParameter("client_id", clientId)
             .appendQueryParameter("redirect_uri", redirectUri)
-            .appendQueryParameter("scope", "repo workflow user")
+            .appendQueryParameter("scope", "repo workflow user delete_repo")
             .appendQueryParameter("state", state)
             .appendQueryParameter("code_challenge", codeChallenge)
             .appendQueryParameter("code_challenge_method", "S256")
