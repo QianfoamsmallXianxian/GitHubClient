@@ -3,6 +3,7 @@ package com.githubclient.app.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.local.RepoCacheEntity
+import com.githubclient.app.data.model.User
 import com.githubclient.app.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,8 +24,12 @@ class HomeViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _user = MutableStateFlow<User?>(null)
+    val user: StateFlow<User?> = _user
+
     init {
         refresh()
+        loadUser()
     }
 
     fun refresh() {
@@ -37,6 +42,13 @@ class HomeViewModel @Inject constructor(
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    fun loadUser() {
+        viewModelScope.launch {
+            runCatching { repository.getCurrentUser() }
+                .onSuccess { _user.value = it }
         }
     }
 }
