@@ -23,8 +23,13 @@ interface RepoCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(repos: List<RepoCacheEntity>)
 
-    @Query("SELECT * FROM repo_cache ORDER BY stars DESC")
-    fun observeRepos(): Flow<List<RepoCacheEntity>>
+    /** 只观察指定账号的缓存，切换账号后不会串到别的账号 */
+    @Query("SELECT * FROM repo_cache WHERE accountLogin = :login ORDER BY stars DESC")
+    fun observeRepos(login: String): Flow<List<RepoCacheEntity>>
+
+    /** 只清理指定账号的缓存，不影响其他账号 */
+    @Query("DELETE FROM repo_cache WHERE accountLogin = :login")
+    suspend fun clearFor(login: String)
 
     @Query("DELETE FROM repo_cache")
     suspend fun clear()
