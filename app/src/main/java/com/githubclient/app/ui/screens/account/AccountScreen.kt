@@ -55,7 +55,6 @@ import com.githubclient.app.data.auth.GitHubAccount
 fun AccountScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
-    onOpenRepositories: () -> Unit,
     onOpenTokenSettings: () -> Unit,
     viewModel: AccountViewModel = hiltViewModel()
 ) {
@@ -101,11 +100,6 @@ fun AccountScreen(
                 Button(onClick = { showAddDialog = true }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text("添加账号")
-                }
-                Spacer(Modifier.height(8.dp))
-                Button(onClick = onOpenRepositories, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Info, contentDescription = null)
-                    Text("仓库列表")
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onOpenTokenSettings, modifier = Modifier.fillMaxWidth()) {
