@@ -1,12 +1,27 @@
 package com.githubclient.app.data.repository
 
 import android.util.Base64
+import com.githubclient.app.data.remote.BlobResponse
+import com.githubclient.app.data.remote.CreateBlobRequest
+import com.githubclient.app.data.remote.CreateCommitRequest
+import com.githubclient.app.data.remote.CreateRefRequest
 import com.githubclient.app.data.remote.CreateRepoRequest
+import com.githubclient.app.data.remote.CreateTreeRequest
 import com.githubclient.app.data.remote.DeleteFileRequest
 import com.githubclient.app.data.remote.GitHubApi
+import com.githubclient.app.data.remote.TreeItem
 import com.githubclient.app.data.remote.UpdateFileRequest
+import com.githubclient.app.data.remote.UpdateRefRequest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,147 +30,93 @@ class GitHubWriteRepository @Inject constructor(
     private val api: GitHubApi
 ) {
     suspend fun createRepository(name: String, description: String? = null, isPrivate: Boolean = false, autoInit: Boolean = true) =
-        api.createRepository(CreateRepoRequest(name = name, description = description, isPrivate = isPrivate, autoInit = autoInit))
+        api.createRepository(CreateRepoRequest(name, description, isPrivate, autoInit))
 
-    suspend fun getFileSha(owner: String, repo: String, path: String): String? {
-        return runCatching {
-            api.getFileContent(owner, repo, path).sha
-        }.getOrNull()
-    }
+    suspend fun getFileSha(owner: String, repo: String, path: String): String? =
+        runCatching { api.getFileContent(owner, repo, path).sha }.getOrNull()
 
-    suspend fun uploadOrUpdateFile(
-        owner: String,
-        repo: String,
-        path: String,
-        content: String,
-        message: String = "update $path",
-        branch: String? = null
-    ) {
+    suspend fun uploadOrUpdateFile(owner: String, repo: String, path: String, content: String, message: String = "update $path", branch: String? = null) {
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
-        val existingSha = getFileSha(owner, repo, path)
-        api.updateFile(
-            owner = owner,
-            repo = repo,
-            path = path,
-            body = UpdateFileRequest(message = message, content = encoded, sha = existingSha, branch = branch)
-        )
+        val sha = getFileSha(owner, repo, path)
+        api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch))
     }
 
-    suspend fun uploadFileSmart(
-        owner: String,
-        repo: String,
-        path: String,
-        content: String,
-        message: String = "upload $path",
-        branch: String? = null,
-        maxAttempts: Int = 4
-    ) {
+    suspend fun uploadFileSmart(owner: String, repo: String, path: String, content: String, message: String = "upload $path", branch: String? = null, maxAttempts: Int = 4) {
         val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
-        var lastError: Throwable? = null
-
-        for (attempt in 0 until maxAttempts) {
-            val result = runCatching {
-                api.updateFile(
-                    owner = owner,
-                    repo = repo,
-                    path = path,
-                    body = UpdateFileRequest(message = message, content = encoded, sha = null, branch = branch)
-                )
-            }
-
-            if (result.isSuccess) return
-
-            val cause = result.exceptionOrNull()
-            val isConflict = cause is HttpException && cause.code() == 409
-            if (!isConflict) {
-                throw (cause ?: IllegalStateException("upload failed: $path"))
-            }
-
-            lastError = cause
-
-            val existingSha = getFileSha(owner, repo, path)
-            if (existingSha != null) {
-                api.updateFile(
-                    owner = owner,
-                    repo = repo,
-                    path = path,
-                    body = UpdateFileRequest(message = message, content = encoded, sha = existingSha, branch = branch)
-                )
-                return
-            }
-
-            delay(200L * (attempt + 1))
+        var last: Throwable? = null
+        for (i in 0 until maxAttempts) {
+            val r = runCatching { api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, null, branch)) }
+            if (r.isSuccess) return
+            val c = r.exceptionOrNull()
+            if (!(c is HttpException && c.code() == 409)) throw (c ?: IllegalStateException("upload failed"))
+            last = c
+            val sha = getFileSha(owner, repo, path)
+            if (sha != null) { api.updateFile(owner, repo, path, UpdateFileRequest(message, encoded, sha, branch)); return }
+            delay(200L * (i + 1))
         }
-
-        throw (lastError ?: IllegalStateException("upload failed: $path"))
+        throw (last ?: IllegalStateException("upload failed"))
     }
 
-    suspend fun uploadNewFile(
-        owner: String,
-        repo: String,
-        path: String,
-        content: String,
-        message: String = "upload $path",
-        branch: String? = null
-    ) = uploadFileSmart(owner, repo, path, content, message, branch)
+    suspend fun uploadNewFile(owner: String, repo: String, path: String, content: String, message: String = "upload $path", branch: String? = null) =
+        uploadFileSmart(owner, repo, path, content, message, branch)
 
-    suspend fun deleteFile(
-        owner: String,
-        repo: String,
-        path: String,
-        sha: String? = null,
-        branch: String? = null
-    ) {
-        val realSha = if (!sha.isNullOrBlank()) {
-            sha
-        } else {
-            getFileSha(owner, repo, path)
-                ?: throw IllegalStateException("cannot get sha: $path")
-        }
-        api.deleteFile(
-            owner = owner,
-            repo = repo,
-            path = path,
-            body = DeleteFileRequest(message = "delete $path", sha = realSha, branch = branch)
-        )
-    }
-
-    suspend fun batchDeleteFiles(
-        owner: String,
-        repo: String,
-        paths: List<String>,
-        branch: String? = null
-    ): List<String> {
-        val results = mutableListOf<String>()
-        for (path in paths) {
-            runCatching {
-                deleteFile(owner = owner, repo = repo, path = path, sha = null, branch = branch)
-            }.onSuccess {
-                results.add("$path: ok")
-            }.onFailure { e ->
-                results.add("$path: ${e.message}")
-            }
-        }
-        return results
-    }
-
-    suspend fun batchUploadFiles(
+    suspend fun uploadAllFiles(
         owner: String,
         repo: String,
         files: Map<String, String>,
         message: String = "batch upload",
-        branch: String? = null
-    ): List<String> {
-        val results = mutableListOf<String>()
-        for ((path, content) in files) {
-            runCatching {
-                uploadOrUpdateFile(owner, repo, path, content, message, branch)
-            }.onSuccess {
-                results.add("$path: ok")
-            }.onFailure { e ->
-                results.add("$path: ${e.message}")
+        branch: String = "main",
+        blobConcurrency: Int = 6,
+        onProgress: (suspend (Int, Int, String) -> Unit)? = null
+    ): Int = withContext(Dispatchers.IO) {
+        if (files.isEmpty()) return@withContext 0
+        val total = files.size
+        val done = AtomicInteger(0)
+        val items = mutableListOf<TreeItem>()
+        val lock = Mutex()
+        files.entries.toList().chunked(blobConcurrency).forEach { chunk ->
+            coroutineScope {
+                chunk.map { (path, content) ->
+                    async {
+                        val b64 = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
+                        val blob: BlobResponse = api.createBlob(owner, repo, CreateBlobRequest(b64))
+                        lock.withLock { items.add(TreeItem(path, "100644", "blob", blob.sha)) }
+                        onProgress?.invoke(done.incrementAndGet(), total, path)
+                    }
+                }.awaitAll()
             }
         }
-        return results
+        val parent = runCatching { api.getRef(owner, repo, branch).target.sha }.getOrNull()
+        val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
+        val tree = api.createTree(owner, repo, CreateTreeRequest(items, base))
+        val commit = api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
+        if (parent != null) api.updateRef(owner, repo, branch, UpdateRefRequest(commit.sha, false))
+        else api.createRef(owner, repo, CreateRefRequest("refs/heads/$branch", commit.sha))
+        total
+    }
+
+    suspend fun deleteFile(owner: String, repo: String, path: String, sha: String? = null, branch: String? = null) {
+        val real = if (!sha.isNullOrBlank()) sha else (getFileSha(owner, repo, path) ?: throw IllegalStateException("no sha: $path"))
+        api.deleteFile(owner, repo, path, DeleteFileRequest("delete $path", real, branch))
+    }
+
+    suspend fun batchDeleteFiles(owner: String, repo: String, paths: List<String>, branch: String? = null): List<String> {
+        val res = mutableListOf<String>()
+        for (p in paths) {
+            runCatching { deleteFile(owner, repo, p, null, branch) }
+                .onSuccess { res.add("$p: ok") }
+                .onFailure { res.add("$p: ${it.message}") }
+        }
+        return res
+    }
+
+    suspend fun batchUploadFiles(owner: String, repo: String, files: Map<String, String>, message: String = "batch upload", branch: String? = null): List<String> {
+        val res = mutableListOf<String>()
+        for ((p, c) in files) {
+            runCatching { uploadOrUpdateFile(owner, repo, p, c, message, branch) }
+                .onSuccess { res.add("$p: ok") }
+                .onFailure { res.add("$p: ${it.message}") }
+        }
+        return res
     }
 }

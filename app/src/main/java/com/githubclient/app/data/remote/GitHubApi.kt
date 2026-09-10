@@ -19,6 +19,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -216,6 +217,72 @@ interface GitHubApi {
         @Query("page") page: Int = 1,
         @Query("per_page") perPage: Int = 30
     ): SearchUsersResponse
+
+    // ==================== Git Data API ====================
+
+    /** 创建 blob。blob 创建不依赖分支状态，可安全并发。 */
+    @POST("repos/{owner}/{repo}/git/blobs")
+    suspend fun createBlob(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: CreateBlobRequest,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): BlobResponse
+
+    /** 读取分支引用，拿到最新 commit sha。空仓库会返回 404。 */
+    @GET("repos/{owner}/{repo}/git/ref/heads/{branch}")
+    suspend fun getRef(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("branch") branch: String,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): RefResponse
+
+    /** 读取 commit 详情，用于取它的 tree sha 作为 base_tree。 */
+    @GET("repos/{owner}/{repo}/git/commits/{sha}")
+    suspend fun getCommitDetail(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("sha") sha: String,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): CommitDetailResponse
+
+    /** 用一批 blob 组装一棵 tree。 */
+    @POST("repos/{owner}/{repo}/git/trees")
+    suspend fun createTree(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: CreateTreeRequest,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): TreeResponse
+
+    /** 创建 commit。 */
+    @POST("repos/{owner}/{repo}/git/commits")
+    suspend fun createCommit(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: CreateCommitRequest,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): CommitShaResponse
+
+    /** 更新已有分支引用。 */
+    @PATCH("repos/{owner}/{repo}/git/refs/heads/{branch}")
+    suspend fun updateRef(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("branch") branch: String,
+        @Body body: UpdateRefRequest,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    )
+
+    /** 空仓库首次提交时创建分支引用。 */
+    @POST("repos/{owner}/{repo}/git/refs")
+    suspend fun createRef(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: CreateRefRequest,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    )
 }
 
 @kotlinx.serialization.Serializable
@@ -247,4 +314,85 @@ data class DeleteFileRequest(
     val message: String,
     val sha: String,
     val branch: String? = null
+)
+
+// ---------- Git Data API 模型 ----------
+
+@kotlinx.serialization.Serializable
+data class CreateBlobRequest(
+    val content: String,
+    val encoding: String = "base64"
+)
+
+@kotlinx.serialization.Serializable
+data class BlobResponse(
+    val sha: String
+)
+
+@kotlinx.serialization.Serializable
+data class RefTarget(
+    val sha: String,
+    val type: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class RefResponse(
+    val ref: String? = null,
+    @kotlinx.serialization.SerialName("object")
+    val target: RefTarget
+)
+
+@kotlinx.serialization.Serializable
+data class CommitTreeRef(
+    val sha: String
+)
+
+@kotlinx.serialization.Serializable
+data class CommitDetailResponse(
+    val sha: String,
+    val tree: CommitTreeRef
+)
+
+@kotlinx.serialization.Serializable
+data class TreeItem(
+    val path: String,
+    val mode: String = "100644",
+    val type: String = "blob",
+    val sha: String
+)
+
+@kotlinx.serialization.Serializable
+data class CreateTreeRequest(
+    val tree: List<TreeItem>,
+    @kotlinx.serialization.SerialName("base_tree")
+    val baseTree: String? = null
+)
+
+@kotlinx.serialization.Serializable
+data class TreeResponse(
+    val sha: String
+)
+
+@kotlinx.serialization.Serializable
+data class CreateCommitRequest(
+    val message: String,
+    val tree: String,
+    val parents: List<String> = emptyList()
+)
+
+@kotlinx.serialization.Serializable
+data class CommitShaResponse(
+    val sha: String
+)
+
+@kotlinx.serialization.Serializable
+data class UpdateRefRequest(
+    val sha: String,
+    val force: Boolean = false
+)
+
+@kotlinx.serialization.Serializable
+data class CreateRefRequest(
+    val ref: String,
+    val sha: String
 )
