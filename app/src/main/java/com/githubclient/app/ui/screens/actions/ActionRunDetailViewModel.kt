@@ -3,18 +3,30 @@ package com.githubclient.app.ui.screens.actions
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.model.WorkflowJob
-import com.githubclient.app.data.model.WorkflowStep
 import com.githubclient.app.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.time.Instant
+import java.util.zip.ZipInputStream
 import javax.inject.Inject
+
+/** 构建进度，供界面展示 */
+data class BuildProgress(
+    val percent: Int,
+    val totalSteps: Int,
+    val statusText: String,
+    val etaText: String
+)
 
 @HiltViewModel
 class ActionRunDetailViewModel @Inject constructor(
@@ -30,7 +42,7 @@ class ActionRunDetailViewModel @Inject constructor(
     private val _progress = MutableStateFlow<BuildProgress?>(null)
     val progress: StateFlow<BuildProgress?> = _progress
 
-    private var pollJob: kotlinx.coroutines.Job? = null
+    private var pollJob: Job? = null
 
     fun load(owner: String, name: String, runId: Long) {
         pollJob?.cancel()
@@ -46,16 +58,52 @@ class ActionRunDetailViewModel @Inject constructor(
     private suspend fun fetchLog(owner: String, name: String, runId: Long) {
         try {
             val url = "https://api.github.com/repos/$owner/$name/actions/runs/$runId/logs"
-            val request = Request.Builder().url(url).build()
-            okHttpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    _log.value = response.body?.string()
-                } else {
-                    _log.value = "日志获取失败 HTTP ${response.code}"
+            _log.value = withContext(Dispatchers.IO) {
+                val request = Request.Builder().url(url).build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        "日志获取失败 HTTP ${response.code}"
+                    } else {
+                        // GitHub 的 logs 接口返回 zip，直接当文本会是乱码
+                        extractLogText(response.body?.bytes())
+                    }
                 }
             }
         } catch (e: Exception) {
             _log.value = "日志获取失败: ${e.message}"
+        }
+    }
+
+    /** 把 zip 里的文本日志拼出来；不是 zip 时按纯文本处理 */
+    private fun extractLogText(bytes: ByteArray?): String {
+        if (bytes == null || bytes.isEmpty()) return "日志为空"
+        val looksLikeZip = bytes.size >= 4 &&
+            bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte()
+        if (!looksLikeZip) return bytes.toString(Charsets.UTF_8)
+        return runCatching {
+            val builder = StringBuilder()
+            ZipInputStream(bytes.inputStream()).use { zis ->
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    if (!entry.isDirectory) {
+                        val out = ByteArrayOutputStream()
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val read = zis.read(buffer)
+                            if (read <= 0) break
+                            out.write(buffer, 0, read)
+                        }
+                        builder.append("===== ").append(entry.name).append(" =====\n")
+                        builder.append(out.toString(Charsets.UTF_8.name()))
+                        builder.append("\n\n")
+                    }
+                    zis.closeEntry()
+                    entry = zis.nextEntry
+                }
+            }
+            if (builder.isBlank()) "日志压缩包内没有可读文件" else builder.toString()
+        }.getOrElse {
+            "日志解析失败: ${it.message}"
         }
     }
 
@@ -65,7 +113,7 @@ class ActionRunDetailViewModel @Inject constructor(
             val jobsResponse = repository.getWorkflowJobs(owner, name, runId)
             _progress.value = calculateProgress(run.status, run.conclusion, run.createdAt, jobsResponse.jobs)
         } catch (e: Exception) {
-            _progress.value = BuildProgress(0, 0, "进行中", "进度获取失败")
+            _progress.value = null
         }
     }
 
@@ -97,8 +145,7 @@ class ActionRunDetailViewModel @Inject constructor(
             else -> status
         }
 
-        val eta = estimateEta(createdAt, percent, status, conclusion)
-        return BuildProgress(percent, total, finalStatus, eta)
+        return BuildProgress(percent, total, finalStatus, estimateEta(createdAt, percent, status, conclusion))
     }
 
     private fun estimateEta(createdAt: String?, percent: Int, status: String, conclusion: String?): String {
@@ -106,9 +153,8 @@ class ActionRunDetailViewModel @Inject constructor(
             return if (conclusion == "success") "已完成" else "已结束"
         }
         if (percent <= 0 || createdAt == null) return "估算中..."
-        val startMillis = runCatching {
-            Instant.parse(createdAt).toEpochMilli()
-        }.getOrNull() ?: return "估算中..."
+        val startMillis = runCatching { Instant.parse(createdAt).toEpochMilli() }.getOrNull()
+            ?: return "估算中..."
         val elapsed = System.currentTimeMillis() - startMillis
         if (elapsed <= 0) return "估算中..."
         val totalEstimated = (elapsed * 100.0 / percent).toLong()
@@ -120,10 +166,3 @@ class ActionRunDetailViewModel @Inject constructor(
         }
     }
 }
-
-data class BuildProgress(
-    val percent: Int,
-    val totalSteps: Int,
-    val statusText: String,
-    val etaText: String
-)
