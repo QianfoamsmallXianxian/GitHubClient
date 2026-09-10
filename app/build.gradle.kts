@@ -30,7 +30,7 @@ android {
         buildConfigField(
             "String",
             "GITHUB_OAUTH_CLIENT_SECRET",
-            "\"${System.getenv("GITHUB_OAUTH_CLIENT_SECRET") ?: "5450396e4b486c6ef0d0941ddeed9ed35020f6f7"}\""
+            "\"${System.getenv("GITHUB_OAUTH_CLIENT_SECRET") ?: "YOUR_GITHUB_OAUTH_CLIENT_SECRET"}\""
         )
     }
 
