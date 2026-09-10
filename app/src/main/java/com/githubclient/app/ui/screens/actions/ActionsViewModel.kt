@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -80,9 +81,10 @@ class ActionsViewModel @Inject constructor(
     fun clearSelection() { _selectedIds.value = emptySet() }
 
     /**
-     * 批量删除 Run。
-     * GitHub 规定：只有已完成的 Run 才能被删除；queued / in_progress 必须先取消。
-     * 因此这里只对 completed 的 Run 执行删除，其余记录为跳过原因，避免中途失败导致后续删不掉。
+     * 批量删除 Run（连贯删除）。
+     * GitHub 规定：只有 completed 的 Run 才能删除。
+     * 对于 queued / in_progress 的新 Run：先取消，轮询等待其结束后再删除，
+     * 这样「全新的构建内容」也能一次删掉，不会卡住。
      */
     fun deleteSelected(owner: String, name: String) {
         val ids = _selectedIds.value.toList()
@@ -90,18 +92,25 @@ class ActionsViewModel @Inject constructor(
         viewModelScope.launch {
             _isDeleting.value = true
             _message.value = null
-            val current = _runs.value.associateBy { it.id }
             var ok = 0
-            var skipped = 0
             val failed = mutableListOf<Long>()
 
             for (id in ids) {
-                val run = current[id]
-                if (run != null && run.status != "completed") {
-                    skipped++
-                    continue
-                }
                 try {
+                    var run = runCatching { repository.getWorkflowRun(owner, name, id) }.getOrNull()
+
+                    // 未完成：先取消，再等待真正结束
+                    if (run != null && run.status != "completed") {
+                        runCatching { repository.cancelRun(owner, name, id) }
+                        var tries = 0
+                        while (tries < 12) {
+                            delay(1500L)
+                            run = runCatching { repository.getWorkflowRun(owner, name, id) }.getOrNull()
+                            if (run == null || run.status == "completed") break
+                            tries++
+                        }
+                    }
+
                     repository.deleteRun(owner, name, id)
                     ok++
                 } catch (e: Exception) {
@@ -112,7 +121,6 @@ class ActionsViewModel @Inject constructor(
             _isDeleting.value = false
             _message.value = buildString {
                 append("已删除 $ok 项")
-                if (skipped > 0) append("，跳过 $skipped 项(未完成需先取消)")
                 if (failed.isNotEmpty()) append("，失败 ${failed.size} 项")
             }
             _selectedIds.value = emptySet()
