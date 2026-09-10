@@ -64,6 +64,9 @@ class ZipUploadManager @Inject constructor(
         ) {
             return
         }
+        // 同步占位：在启动协程前就把状态置为 Loading。
+        // 否则协程调度有延迟，这期间状态仍是 Idle，用户连点两次会启动两个并发上传。
+        _state.value = ZipUploadState.Loading
         appScope.launch { runUpload(owner, repo, zipBytes, autoTriggerBuild) }
     }
 
@@ -72,7 +75,6 @@ class ZipUploadManager @Inject constructor(
     }
 
     private suspend fun runUpload(owner: String, repo: String, zipBytes: ByteArray, autoTriggerBuild: Boolean) {
-        _state.value = ZipUploadState.Loading
         try {
             val cleanOwner = owner.trim().substringBefore('/')
             val cleanRepo = repo.trim()

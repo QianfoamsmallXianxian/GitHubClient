@@ -58,6 +58,9 @@ class AutoRepoManager @Inject constructor(
         ) {
             return
         }
+        // 同步占位：在启动协程前就置为 Scanning。
+        // 否则协程调度有延迟，这期间状态仍是 Idle，用户连点两次会并发建两个仓库。
+        _state.value = AutoRepoState.Scanning("扫描本地目录...")
         appScope.launch {
             createRepoAndUploadDirectory(repoName, description, isPrivate, localPath)
         }
@@ -70,7 +73,6 @@ class AutoRepoManager @Inject constructor(
         localPath: String
     ): Result<AutoRepoState.Success> = withContext(Dispatchers.IO) {
         runCatching {
-            _state.value = AutoRepoState.Scanning("扫描本地目录...")
             val scanResult = scanner.scanDirectory(localPath)
             if (scanResult.files.isEmpty()) {
                 val reason = scanResult.skippedFiles.firstOrNull()
