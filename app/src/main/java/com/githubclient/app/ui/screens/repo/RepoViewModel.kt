@@ -71,6 +71,24 @@ class RepoViewModel @Inject constructor(
 
     fun clearSelection() { _selectedPaths.value = emptySet() }
 
+    fun deleteRepository(owner: String, name: String) {
+        viewModelScope.launch {
+            _message.value = null
+            try {
+                repository.deleteRepository(owner, name)
+                _message.value = "仓库已删除"
+            } catch (e: Exception) {
+                _message.value = when {
+                    e is retrofit2.HttpException && e.code() == 403 ->
+                        "删除失败(403)：当前 Token 缺少 delete_repo 权限，请到 GitHub 重新生成带 delete_repo 的 Token"
+                    e is retrofit2.HttpException && e.code() == 404 ->
+                        "删除失败(404)：仓库不存在或 Token 无权访问"
+                    else -> "删除失败: ${e.message}"
+                }
+            }
+        }
+    }
+
     fun deleteSelected() {
         val paths = _selectedPaths.value.toList()
         if (paths.isEmpty()) return
