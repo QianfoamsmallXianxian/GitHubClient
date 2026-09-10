@@ -74,7 +74,7 @@ class AutoRepoManager @Inject constructor(
                 repo = repo.name,
                 files = map,
                 message = "initial upload: $repoName",
-                branch = "main"
+                branch = null
             ) { done, t, _ ->
                 _state.value = AutoRepoState.Uploading(done, t)
                 if (done % notifyEvery == 0 || done == t) {

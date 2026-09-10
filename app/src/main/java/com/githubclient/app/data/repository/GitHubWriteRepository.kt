@@ -61,25 +61,34 @@ class GitHubWriteRepository @Inject constructor(
         uploadFileSmart(owner, repo, path, content, message, branch)
 
     /**
+     * 解析仓库真实默认分支。
+     * 之前硬编码 "main" 是错的：老账号 / 部分仓库默认分支是 "master"，
+     * 硬编码会导致文件提交到看不见的分支。
+     */
+    private suspend fun resolveBranch(owner: String, repo: String, hint: String?): String {
+        if (!hint.isNullOrBlank()) return hint
+        val fromApi = runCatching { api.getRepository(owner, repo).defaultBranch }.getOrNull()
+        return if (!fromApi.isNullOrBlank()) fromApi else "main"
+    }
+
+    /**
      * 批量上传：Git Data API 一次提交全部文件。
-     *
-     * 关键点：Git Data API 不能在**完全空的仓库**上工作（会返回 409
-     * "Git Repository is empty"）。所以先检测，若为空则用 Contents API
-     * 落一个占位文件把仓库激活，再走正常流程。
+     * 空仓库（Git Data API 会 409）先用 Contents API 落一个占位文件激活。
      */
     suspend fun uploadAllFiles(
         owner: String,
         repo: String,
         files: Map<String, String>,
         message: String = "batch upload",
-        branch: String = "main",
+        branch: String? = null,
         blobConcurrency: Int = 6,
         onProgress: (suspend (Int, Int, String) -> Unit)? = null
     ): Int = withContext(Dispatchers.IO) {
         if (files.isEmpty()) return@withContext 0
 
-        // 0) 空仓库激活：Git Data API 无法直接写入空仓库
-        val existingRef = runCatching { api.getRef(owner, repo, branch).target.sha }.getOrNull()
+        val br = resolveBranch(owner, repo, branch)
+
+        val existingRef = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         if (existingRef == null) {
             val seed = Base64.encodeToString(
                 "# $repo\n\n由 GitHubClient 初始化。\n".toByteArray(),
@@ -88,7 +97,7 @@ class GitHubWriteRepository @Inject constructor(
             runCatching {
                 api.updateFile(
                     owner, repo, ".github-client-init.md",
-                    UpdateFileRequest("chore: init repository", seed, null, branch)
+                    UpdateFileRequest("chore: init repository", seed, null, br)
                 )
             }
         }
@@ -110,14 +119,14 @@ class GitHubWriteRepository @Inject constructor(
             }
         }
 
-        val parent = runCatching { api.getRef(owner, repo, branch).target.sha }.getOrNull()
+        val parent = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
         val tree = api.createTree(owner, repo, CreateTreeRequest(items, base))
         val commit = api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
         if (parent != null) {
-            api.updateRef(owner, repo, branch, UpdateRefRequest(commit.sha, false))
+            api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false))
         } else {
-            api.createRef(owner, repo, CreateRefRequest("refs/heads/$branch", commit.sha))
+            api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha))
         }
         total
     }

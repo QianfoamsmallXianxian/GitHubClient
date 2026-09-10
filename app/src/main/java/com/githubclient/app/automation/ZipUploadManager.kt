@@ -81,7 +81,7 @@ class ZipUploadManager @Inject constructor(
                 repo = cleanRepo,
                 files = files,
                 message = "zip upload",
-                branch = "main"
+                branch = null
             ) { done, t, path ->
                 _state.value = ZipUploadState.Progress(done, t, path)
                 if (done % notifyEvery == 0 || done == t) {
