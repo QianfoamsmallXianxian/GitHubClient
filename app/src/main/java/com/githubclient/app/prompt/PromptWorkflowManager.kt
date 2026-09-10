@@ -1,83 +1,125 @@
 package com.githubclient.app.prompt
 
-import android.content.Context
-import com.githubclient.app.terminal.TerminalExecutor
-import com.githubclient.app.terminal.TermuxManager
-import dagger.hilt.android.qualifiers.ApplicationContext
+import com.githubclient.app.data.ai.AiConfigStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * 提示词工作流管理器。
+ * 负责把用户输入的提示词（可选附加命令）发送给已配置的 AI 服务，并返回文本结果。
+ */
 @Singleton
 class PromptWorkflowManager @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val terminalExecutor: TerminalExecutor,
-    private val termuxManager: TermuxManager
+    private val configStore: AiConfigStore,
+    private val okHttpClient: OkHttpClient
 ) {
-    private val defaultOutputDir = File("/sdcard/Download/GitHubClient/output")
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading
 
-    private val _isProcessing = MutableStateFlow(false)
-    val isProcessing: StateFlow<Boolean> = _isProcessing
+    private val _response = MutableStateFlow<String?>(null)
+    val response: StateFlow<String?> = _response
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    suspend fun processPrompt(
-        prompt: String,
-        command: String,
-        useTermux: Boolean = true
-    ): Result<String> = withContext(Dispatchers.IO) {
-        _isProcessing.value = true
-        _message.value = "正在处理..."
+    val isProcessing: StateFlow<Boolean> get() = _isLoading
 
-        val result = runCatching {
-            val output: String
-            if (useTermux && termuxManager.isTermuxInstalled() && termuxManager.hasRunCommandPermission()) {
-                output = try {
-                    terminalExecutor.executeCommand(command, useRoot = false).text
-                } catch (e: Exception) {
-                    terminalExecutor.executeCommand(command, useRoot = false).text
-                }
-            } else {
-                output = terminalExecutor.executeCommand(command, useRoot = false).text
-            }
+    private val history = mutableListOf<Pair<String, String>>()
 
-            val savedPath = saveOutput(prompt, command, output)
-            _message.value = "处理完成，已保存到 $savedPath"
-            savedPath
+    suspend fun send(prompt: String, command: String = "", useTermux: Boolean = false) {
+        if (prompt.isBlank()) return
+        _isLoading.value = true
+        _message.value = null
+        try {
+            val text = buildUserContent(prompt, command, useTermux)
+            val reply = callAi(text)
+            history.add("user" to text)
+            history.add("assistant" to reply)
+            _response.value = reply
+        } catch (e: Exception) {
+            _message.value = e.message ?: "请求失败"
+            _response.value = null
+        } finally {
+            _isLoading.value = false
         }
-
-        _isProcessing.value = false
-        result
     }
-
-    private fun saveOutput(prompt: String, command: String, output: String): String {
-        defaultOutputDir.mkdirs()
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val file = File(defaultOutputDir, "output_$timestamp.txt")
-        file.writeText(buildString {
-            appendLine("=== 提示词 ===")
-            appendLine(prompt)
-            appendLine()
-            appendLine("=== 执行命令 ===")
-            appendLine(command)
-            appendLine()
-            appendLine("=== 输出结果 ===")
-            appendLine(output)
-        })
-        return file.absolutePath
-    }
-
-    fun getDefaultOutputDir(): String = defaultOutputDir.absolutePath
 
     fun clearMessage() {
         _message.value = null
+    }
+
+    fun reset() {
+        history.clear()
+        _response.value = null
+        _message.value = null
+    }
+
+    private fun buildUserContent(prompt: String, command: String, useTermux: Boolean): String {
+        if (command.isBlank()) return prompt
+        return buildString {
+            append(prompt)
+            append("\n\n---\n附加上下文命令：")
+            append(command)
+            if (useTermux) append("\n（如需在 Termux 中执行，请给出可直接运行的命令）")
+        }
+    }
+
+    private suspend fun callAi(userContent: String): String = withContext(Dispatchers.IO) {
+        val baseUrl = configStore.getBaseUrl().trimEnd('/')
+        val apiKey = configStore.getApiKey()
+        val model = configStore.getModel()
+        require(baseUrl.isNotBlank() && apiKey.isNotBlank()) {
+            "请先在「AI 服务设置」中配置接口地址与密钥"
+        }
+
+        val messages = JSONArray().apply {
+            put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
+            history.takeLast(10).forEach { (role, content) ->
+                put(JSONObject().put("role", role).put("content", content))
+            }
+            put(JSONObject().put("role", "user").put("content", userContent))
+        }
+
+        val payload = JSONObject().apply {
+            put("model", model.ifBlank { "gpt-4o-mini" })
+            put("messages", messages)
+            put("temperature", 0.3)
+        }
+
+        // 用 header() 而非 addHeader()，避免 Authorization 重复导致 AI 鉴权失败
+        val request = Request.Builder()
+            .url("$baseUrl/chat/completions")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .build()
+
+        okHttpClient.newCall(request).execute().use { resp ->
+            if (!resp.isSuccessful) throw IllegalStateException("AI HTTP ${resp.code}")
+            val body = resp.body?.string().orEmpty()
+            val content = JSONObject(body)
+                .optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("content")
+                .orEmpty()
+            if (content.isBlank()) throw IllegalStateException("AI 返回为空")
+            content.trim()
+        }
+    }
+
+    companion object {
+        private const val SYSTEM_PROMPT =
+            "你是一个 Android 开发与 GitHub 使用助手。回答要简洁、可操作，涉及命令时给出可直接执行的命令。"
     }
 }
