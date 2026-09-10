@@ -89,7 +89,6 @@ fun AppNavHost() {
                 onOpenRepo = { owner, name -> navController.navigate(Routes.repo(owner, name)) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
                 onOpenAutomation = { navController.navigate(Routes.AUTOMATION) },
-                onOpenPrompt = { navController.navigate(Routes.PROMPT) },
                 onOpenAccount = { navController.navigate(Routes.ACCOUNT) }
             )
         }
