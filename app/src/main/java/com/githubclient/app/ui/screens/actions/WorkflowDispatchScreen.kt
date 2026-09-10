@@ -72,7 +72,7 @@ fun WorkflowDispatchScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(workflows, key = { it.id }) { workflow ->
-                        WorkflowCard(workflow) { viewModel.dispatch(owner, name, workflow.id, "main") }
+                        WorkflowCard(workflow) { viewModel.dispatch(owner, name, workflow.id) }
                     }
                 }
             }
