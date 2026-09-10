@@ -59,7 +59,7 @@ class AutoRepoManager @Inject constructor(
 
             _state.value = AutoRepoState.Creating("创建远程仓库 $repoName...")
             UploadForegroundService.update(appContext, "创建远程仓库 $repoName...", 0, 0)
-            val repo = writeRepository.createRepository(repoName, description, isPrivate, autoInit = false)
+            val repo = writeRepository.createRepository(repoName, description, isPrivate, autoInit = true)
             val owner = githubRepository.getCurrentUser().login
 
             val total = scan.files.size

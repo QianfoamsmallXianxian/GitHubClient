@@ -60,6 +60,13 @@ class GitHubWriteRepository @Inject constructor(
     suspend fun uploadNewFile(owner: String, repo: String, path: String, content: String, message: String = "upload $path", branch: String? = null) =
         uploadFileSmart(owner, repo, path, content, message, branch)
 
+    /**
+     * 批量上传：Git Data API 一次提交全部文件。
+     *
+     * 关键点：Git Data API 不能在**完全空的仓库**上工作（会返回 409
+     * "Git Repository is empty"）。所以先检测，若为空则用 Contents API
+     * 落一个占位文件把仓库激活，再走正常流程。
+     */
     suspend fun uploadAllFiles(
         owner: String,
         repo: String,
@@ -70,6 +77,22 @@ class GitHubWriteRepository @Inject constructor(
         onProgress: (suspend (Int, Int, String) -> Unit)? = null
     ): Int = withContext(Dispatchers.IO) {
         if (files.isEmpty()) return@withContext 0
+
+        // 0) 空仓库激活：Git Data API 无法直接写入空仓库
+        val existingRef = runCatching { api.getRef(owner, repo, branch).target.sha }.getOrNull()
+        if (existingRef == null) {
+            val seed = Base64.encodeToString(
+                "# $repo\n\n由 GitHubClient 初始化。\n".toByteArray(),
+                Base64.NO_WRAP
+            )
+            runCatching {
+                api.updateFile(
+                    owner, repo, ".github-client-init.md",
+                    UpdateFileRequest("chore: init repository", seed, null, branch)
+                )
+            }
+        }
+
         val total = files.size
         val done = AtomicInteger(0)
         val items = mutableListOf<TreeItem>()
@@ -86,12 +109,16 @@ class GitHubWriteRepository @Inject constructor(
                 }.awaitAll()
             }
         }
+
         val parent = runCatching { api.getRef(owner, repo, branch).target.sha }.getOrNull()
         val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
         val tree = api.createTree(owner, repo, CreateTreeRequest(items, base))
         val commit = api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
-        if (parent != null) api.updateRef(owner, repo, branch, UpdateRefRequest(commit.sha, false))
-        else api.createRef(owner, repo, CreateRefRequest("refs/heads/$branch", commit.sha))
+        if (parent != null) {
+            api.updateRef(owner, repo, branch, UpdateRefRequest(commit.sha, false))
+        } else {
+            api.createRef(owner, repo, CreateRefRequest("refs/heads/$branch", commit.sha))
+        }
         total
     }
 
