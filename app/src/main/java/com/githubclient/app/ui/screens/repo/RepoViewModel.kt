@@ -69,7 +69,6 @@ class RepoViewModel @Inject constructor(
         _selectedPaths.value = cur
     }
 
-    /** 全选当前目录下所有文件与文件夹 */
     fun selectAll() {
         _selectedPaths.value = _contents.value.map { it.path }.toSet()
     }
@@ -94,16 +93,35 @@ class RepoViewModel @Inject constructor(
         }
     }
 
+    /** 批量删除：目录递归删；过滤嵌套路径避免重复 */
     fun deleteSelected() {
         val paths = _selectedPaths.value.toList()
         if (paths.isEmpty()) return
         viewModelScope.launch {
             _isDeleting.value = true
+            _message.value = null
             try {
-                val res = writeRepository.batchDeleteFiles(currentOwner, currentName, paths)
-                val ok = res.count { it.endsWith(": ok") }
-                val fail = res.size - ok
-                _message.value = "已删除 $ok 项" + if (fail > 0) "，失败 $fail 项" else ""
+                val sorted = paths.sorted()
+                val effective = sorted.filter { p ->
+                    sorted.none { other -> other != p && p.startsWith("$other/") }
+                }
+                var ok = 0
+                val failed = mutableListOf<String>()
+                for (p in effective) {
+                    val item = allContents.firstOrNull { it.path == p }
+                        ?: RepoContent(type = "file", name = p.substringAfterLast('/'), path = p, sha = "")
+                    try {
+                        deleteRecursive(currentOwner, currentName, item)
+                        ok++
+                    } catch (e: Exception) {
+                        failed.add(p)
+                    }
+                }
+                _message.value = when {
+                    failed.isEmpty() -> "已删除 $ok 项"
+                    ok == 0 -> "删除失败：${failed.joinToString("、")}"
+                    else -> "已删除 $ok 项，失败：${failed.joinToString("、")}"
+                }
                 _selectedPaths.value = emptySet()
                 loadContents(currentOwner, currentName, currentPath)
             } catch (e: Exception) {
@@ -114,7 +132,6 @@ class RepoViewModel @Inject constructor(
         }
     }
 
-    /** 删除单个文件或文件夹（文件夹递归删除） */
     fun deleteSingle(item: RepoContent) {
         if (currentOwner.isBlank() || currentName.isBlank()) return
         viewModelScope.launch {
@@ -134,8 +151,10 @@ class RepoViewModel @Inject constructor(
 
     private suspend fun deleteRecursive(owner: String, name: String, item: RepoContent) {
         if (item.type == "dir") {
-            val children = runCatching { repository.getContents(owner, name, item.path) }.getOrDefault(emptyList())
-            for (child in children) deleteRecursive(owner, name, child)
+            val children = repository.getContents(owner, name, item.path)
+            for (child in children) {
+                deleteRecursive(owner, name, child)
+            }
         } else {
             writeRepository.deleteFile(owner, name, item.path)
         }
