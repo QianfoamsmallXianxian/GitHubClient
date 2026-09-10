@@ -3,6 +3,7 @@ package com.githubclient.app.ui.screens.automation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.automation.AutoRepoManager
+import com.githubclient.app.automation.LocalProjectScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,13 +36,20 @@ class AutoCreateRepoViewModel @Inject constructor(
                         )
                     }
                     is com.githubclient.app.automation.AutoRepoState.Success ->
-                        AutoRepoState.Success(managerState.repoFullName, managerState.uploadedCount)
+                        AutoRepoState.Success(
+                            managerState.repoFullName,
+                            managerState.uploadedCount,
+                            managerState.failed
+                        )
                     is com.githubclient.app.automation.AutoRepoState.Error ->
                         AutoRepoState.Error(managerState.message)
                 }
             }
         }
     }
+
+    /** 只做目录扫描预览，供界面“先检测目录”按钮使用 */
+    fun previewScan(path: String): LocalProjectScanner.ScanResult = autoRepoManager.previewScan(path)
 
     fun start(repoName: String, description: String?, isPrivate: Boolean, localPath: String) {
         viewModelScope.launch {
