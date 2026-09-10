@@ -74,15 +74,8 @@ class AutoCreateRepoViewModel @Inject constructor(
         _preview.value = null
     }
 
+    /** 交给 AutoRepoManager 在应用级作用域执行，切后台不会中断 */
     fun start(repoName: String, description: String?, isPrivate: Boolean, localPath: String) {
-        viewModelScope.launch {
-            _state.value = AutoRepoState.Running
-            autoRepoManager.createRepoAndUploadDirectory(
-                repoName = repoName,
-                description = description,
-                isPrivate = isPrivate,
-                localPath = localPath
-            )
-        }
+        autoRepoManager.start(repoName, description, isPrivate, localPath)
     }
 }
