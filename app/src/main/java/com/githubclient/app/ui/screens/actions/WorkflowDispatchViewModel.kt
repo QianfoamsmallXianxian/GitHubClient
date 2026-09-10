@@ -32,7 +32,7 @@ class WorkflowDispatchViewModel @Inject constructor(
             try {
                 runCatching { repository.getRepo(owner, name).defaultBranch }
                     .onSuccess { if (it.isNotBlank()) defaultBranch = it }
-                _workflows.value = repository.getWorkflows(owner, name)
+                _workflows.value = repository.getWorkflows(owner, name).workflows
                     .filter { it.state == "active" }
             } catch (e: Exception) {
                 _workflows.value = emptyList()
