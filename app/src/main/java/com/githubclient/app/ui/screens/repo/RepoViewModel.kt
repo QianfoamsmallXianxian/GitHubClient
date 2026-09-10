@@ -93,7 +93,10 @@ class RepoViewModel @Inject constructor(
         }
     }
 
-    /** 批量删除：目录递归删；过滤嵌套路径避免重复 */
+    /**
+     * 批量删除：目录递归删除，过滤被父目录包含的嵌套路径避免重复。
+     * 每个文件使用列表接口已返回的 sha 直接删除，省掉多余的 GET 请求。
+     */
     fun deleteSelected() {
         val paths = _selectedPaths.value.toList()
         if (paths.isEmpty()) return
@@ -149,6 +152,7 @@ class RepoViewModel @Inject constructor(
         }
     }
 
+    /** 递归删除；文件直接使用已知 sha，避免每个文件多一次 GET */
     private suspend fun deleteRecursive(owner: String, name: String, item: RepoContent) {
         if (item.type == "dir") {
             val children = repository.getContents(owner, name, item.path)
@@ -156,7 +160,12 @@ class RepoViewModel @Inject constructor(
                 deleteRecursive(owner, name, child)
             }
         } else {
-            writeRepository.deleteFile(owner, name, item.path)
+            writeRepository.deleteFile(
+                owner = owner,
+                repo = name,
+                path = item.path,
+                sha = item.sha.ifBlank { null }
+            )
         }
     }
 
