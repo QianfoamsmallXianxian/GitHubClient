@@ -8,16 +8,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -26,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -44,22 +44,25 @@ fun PromptScreen(
     onBack: () -> Unit,
     viewModel: PromptViewModel = hiltViewModel()
 ) {
-    val isProcessing by viewModel.isProcessing.collectAsState()
-    val message by viewModel.message.collectAsState()
-    val outputDir by viewModel.outputDir.collectAsState()
-
-    var prompt by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
     var command by remember { mutableStateOf("") }
-    var useTermux by remember { mutableStateOf(true) }
+    var showCommand by remember { mutableStateOf(false) }
+
+    val response by viewModel.response.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val message by viewModel.message.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("提示词处理") },
+                title = { Text("提示词") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
+                },
+                actions = {
+                    TextButton(onClick = { viewModel.reset() }) { Text("清空") }
                 }
             )
         }
@@ -72,97 +75,67 @@ fun PromptScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Card(
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("输入提示词") },
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("使用说明", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 8.dp))
-                    }
-                    Text("1. 「提示词 / 需求描述」：用自然语言写下你想做什么，例如：列出当前目录文件。", style = MaterialTheme.typography.bodySmall)
-                    Text("2. 「要执行的命令」：填写实际要运行的命令，例如 ls -la。提示词只是记录，实际执行的是命令。", style = MaterialTheme.typography.bodySmall)
-                    Text("3. 勾选「优先使用 Termux」时，会尝试在 Termux 中执行；不勾选则使用应用内 shell。", style = MaterialTheme.typography.bodySmall)
-                    Text("4. 结果会保存到输出目录中的 txt 文件。", style = MaterialTheme.typography.bodySmall)
-                    Text("注意：本功能不是 AI 自动改代码，提示词不会自动变成命令。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
-            }
-
-            Text(
-                text = "通过提示词驱动代码/文件处理",
-                style = MaterialTheme.typography.titleMedium
+                minLines = 3
             )
 
-            Card(
+            if (showCommand) {
+                OutlinedTextField(
+                    value = command,
+                    onValueChange = { command = it },
+                    label = { Text("附加上下文命令（可选）") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2
+                )
+            } else {
+                TextButton(onClick = { showCommand = true }) { Text("+ 附加命令上下文") }
+            }
+
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                Button(
+                    onClick = { viewModel.send(text, command) },
+                    enabled = text.isNotBlank() && !isLoading
                 ) {
-                    OutlinedTextField(
-                        value = prompt,
-                        onValueChange = { prompt = it },
-                        label = { Text("提示词 / 需求描述") },
-                        minLines = 3,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = command,
-                        onValueChange = { command = it },
-                        label = { Text("要执行的命令") },
-                        minLines = 2,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = useTermux,
-                            onCheckedChange = { useTermux = it }
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
                         )
-                        Text(
-                            text = "优先使用 Termux",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    Text(
-                        text = "输出目录: $outputDir",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = {
-                            viewModel.processPrompt(prompt, command, useTermux)
-                        },
-                        enabled = prompt.isNotBlank() && command.isNotBlank() && !isProcessing,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isProcessing) {
-                            CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Text("开始处理")
-                        }
+                    } else {
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text("发送")
                     }
                 }
             }
 
             message?.let {
-                Spacer(Modifier.height(4.dp))
                 Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
                 )
+            }
+
+            response?.let {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("回复", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(8.dp))
+                        Text(text = it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
             }
         }
     }
