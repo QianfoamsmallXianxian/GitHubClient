@@ -5,10 +5,16 @@ import com.githubclient.app.data.repository.GitHubWriteRepository
 import com.githubclient.app.di.ApplicationScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,6 +36,13 @@ class AutoRepoManager @Inject constructor(
 ) {
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
+
+    /**
+     * 上传并发数。
+     * 8 是速度与稳定的折中：太高容易触发 GitHub 的次级限流（abuse detection），
+     * 反而被延迟或拒绝。
+     */
+    private val uploadConcurrency = 8
 
     /** 只扫描预览，不创建仓库 */
     fun previewScan(path: String): LocalProjectScanner.ScanResult = scanner.scanDirectory(path)
@@ -72,21 +85,39 @@ class AutoRepoManager @Inject constructor(
             val owner = githubRepository.getCurrentUser().login
 
             val total = scanResult.files.size
-            var uploaded = 0
+            val done = AtomicInteger(0)
             val failed = mutableListOf<String>()
-            for (file in scanResult.files) {
-                uploaded++
-                _state.value = AutoRepoState.Uploading(uploaded, total)
-                runCatching {
-                    writeRepository.uploadOrUpdateFile(
-                        owner = owner,
-                        repo = repo.name,
-                        path = file.relativePath,
-                        content = file.content,
-                        message = "upload ${file.relativePath}"
-                    )
-                }.onFailure { e ->
-                    failed.add("${file.relativePath}: ${e.message ?: "未知错误"}")
+            val failedLock = Mutex()
+
+            _state.value = AutoRepoState.Uploading(0, total)
+
+            // 分块并发上传：每块 uploadConcurrency 个文件并行，块与块之间串行。
+            // 这样把原来 1005 次串行请求压成约 1/8 的等待时间，
+            // 同时又不会一次性抛出上千个请求触发限流。
+            scanResult.files.chunked(uploadConcurrency).forEach { chunk ->
+                coroutineScope {
+                    chunk.map { file ->
+                        async {
+                            val error = runCatching {
+                                // 新仓库里文件都是全新的，sha 传 null 即可创建，
+                                // 省掉每个文件一次多余的 GET 查询（1005 个文件少一半请求）。
+                                writeRepository.uploadNewFile(
+                                    owner = owner,
+                                    repo = repo.name,
+                                    path = file.relativePath,
+                                    content = file.content,
+                                    message = "upload ${file.relativePath}"
+                                )
+                            }.exceptionOrNull()
+
+                            if (error != null) {
+                                failedLock.withLock {
+                                    failed.add("${file.relativePath}: ${error.message ?: "未知错误"}")
+                                }
+                            }
+                            _state.value = AutoRepoState.Uploading(done.incrementAndGet(), total)
+                        }
+                    }.awaitAll()
                 }
             }
 

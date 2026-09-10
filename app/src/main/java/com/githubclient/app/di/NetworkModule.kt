@@ -7,6 +7,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -37,10 +39,19 @@ object NetworkModule {
             }
         }
 
+        // 批量上传需要并发。默认 OkHttp 每主机上限只有 5，会卡住并发上传，
+        // 这里放宽到 16，配合连接池复用，批量上传速度提升明显。
+        val dispatcher = Dispatcher().apply {
+            maxRequests = 64
+            maxRequestsPerHost = 16
+        }
+
         return OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
+            .dispatcher(dispatcher)
+            .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
             // GitHub 的 Actions 日志接口会 302 到对象存储，需要跟随重定向
             .followRedirects(true)
             .followSslRedirects(true)

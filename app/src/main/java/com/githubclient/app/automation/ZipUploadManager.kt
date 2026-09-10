@@ -11,11 +11,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipFile
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +45,12 @@ class ZipUploadManager @Inject constructor(
 ) {
     private val _state = MutableStateFlow<ZipUploadState>(ZipUploadState.Idle)
     val state: StateFlow<ZipUploadState> = _state
+
+    /** 上传并发数，与 AutoRepoManager 保持一致 */
+    private val uploadConcurrency = 8
+
+    /** 提取阶段每处理 N 个条目才刷一次进度，避免高频 state 更新拖慢解压 */
+    private val progressEvery = 25
 
     private val textExtensions = setOf(
         "kt", "java", "xml", "kts", "gradle", "properties", "toml", "md",
@@ -81,36 +91,39 @@ class ZipUploadManager @Inject constructor(
             }
 
             val total = files.size
+            val done = AtomicInteger(0)
             val failed = mutableListOf<String>()
+            val failedLock = Mutex()
 
-            val results = withContext(Dispatchers.IO) {
-                files.entries.chunked(4).map { chunk ->
-                    coroutineScope {
-                        chunk.map { (path, content) ->
-                            async {
-                                runCatching {
-                                    writeRepository.uploadOrUpdateFile(
-                                        owner = cleanOwner,
-                                        repo = cleanRepo,
-                                        path = path,
-                                        content = content,
-                                        message = "zip upload $path"
-                                    )
-                                }.fold(
-                                    onSuccess = { "$path: ok" },
-                                    onFailure = { "$path: ${it.message}" }
+            _state.value = ZipUploadState.Progress(0, total, "")
+
+            // 分块并发上传：每块 uploadConcurrency 个并行，块间串行，
+            // 既缩短总耗时，又不会一次性抛出上千请求触发 GitHub 限流。
+            files.entries.chunked(uploadConcurrency).forEach { chunk ->
+                coroutineScope {
+                    chunk.map { (path, content) ->
+                        async {
+                            val error = runCatching {
+                                writeRepository.uploadOrUpdateFile(
+                                    owner = cleanOwner,
+                                    repo = cleanRepo,
+                                    path = path,
+                                    content = content,
+                                    message = "zip upload $path"
                                 )
-                            }
-                        }.awaitAll()
-                    }
-                }.flatten()
-            }
+                            }.exceptionOrNull()
 
-            var done = 0
-            for (r in results) {
-                done++
-                if (!r.endsWith(": ok")) failed.add(r)
-                _state.value = ZipUploadState.Progress(done, total, r.substringBeforeLast(':'))
+                            if (error != null) {
+                                failedLock.withLock {
+                                    failed.add("$path: ${error.message}")
+                                }
+                            }
+                            _state.value = ZipUploadState.Progress(
+                                done.incrementAndGet(), total, path
+                            )
+                        }
+                    }.awaitAll()
+                }
             }
 
             val uploaded = total - failed.size
@@ -134,7 +147,8 @@ class ZipUploadManager @Inject constructor(
     private fun extractTextFilesWithProgress(zipBytes: ByteArray): Map<String, String> {
         val tempFile = File.createTempFile("src_upload", ".zip")
         try {
-            FileOutputStream(tempFile).use { it.write(zipBytes) }
+            // 用缓冲流写盘，避免小块直写导致的系统调用开销
+            BufferedOutputStream(FileOutputStream(tempFile), 64 * 1024).use { it.write(zipBytes) }
             val files = linkedMapOf<String, String>()
             ZipFile.builder().setFile(tempFile).get().use { zip ->
                 val entries = zip.entries
@@ -151,7 +165,10 @@ class ZipUploadManager @Inject constructor(
                     val ext = path.substringAfterLast('.', "").lowercase()
                     val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
                     if (ext in textExtensions || isGitignore) {
-                        _state.value = ZipUploadState.Extracting(current, totalEntries, path)
+                        // 降低状态刷新频率，解压大包时明显更快
+                        if (current % progressEvery == 0 || current == totalEntries) {
+                            _state.value = ZipUploadState.Extracting(current, totalEntries, path)
+                        }
                         zip.getInputStream(entry).use { input ->
                             files[path] = input.readBytes().toString(Charsets.UTF_8)
                         }

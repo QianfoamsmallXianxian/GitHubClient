@@ -40,6 +40,28 @@ class GitHubWriteRepository @Inject constructor(
     }
 
     /**
+     * 上传全新文件，不先查 sha。
+     * 新建仓库里的文件一定不存在，sha 传 null 即可创建，
+     * 省掉每个文件一次多余的 GET，批量上传时能少一半请求。
+     */
+    suspend fun uploadNewFile(
+        owner: String,
+        repo: String,
+        path: String,
+        content: String,
+        message: String = "upload $path",
+        branch: String? = null
+    ) {
+        val encoded = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
+        api.updateFile(
+            owner = owner,
+            repo = repo,
+            path = path,
+            body = UpdateFileRequest(message = message, content = encoded, sha = null, branch = branch)
+        )
+    }
+
+    /**
      * 删除单个文件。
      * sha 已知时直接使用，避免每次删除都额外发一次 GET 请求（这是批量删除慢的主因）。
      */
