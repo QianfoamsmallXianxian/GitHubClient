@@ -1,5 +1,7 @@
 package com.githubclient.app.ui.screens.login
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -36,7 +39,7 @@ fun LoginScreen(
 ) {
     var pat by remember { mutableStateOf("") }
     val loginState by viewModel.state.collectAsState()
-    val isFetchingToken by viewModel.isFetchingToken.collectAsState()
+    val context = LocalContext.current
 
     LaunchedEffect(loginState) {
         if (loginState is LoginState.Success) {
@@ -66,43 +69,30 @@ fun LoginScreen(
         Spacer(Modifier.height(32.dp))
 
         Button(
-            onClick = { viewModel.startOAuthTokenFetch() },
-            enabled = !isFetchingToken && loginState !is LoginState.Loading,
+            onClick = {
+                runCatching {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://github.com/settings/tokens/new?scopes=repo,workflow,delete_repo&description=GitHubClient")
+                    )
+                    context.startActivity(intent)
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
-            if (isFetchingToken) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            } else {
-                Icon(Icons.Default.Sync, contentDescription = null)
-            }
-            Text(if (isFetchingToken) "正在获取 Token..." else "一键获取 GitHub Token")
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        Button(
-            onClick = { viewModel.startOAuth() },
-            enabled = loginState !is LoginState.Loading && !isFetchingToken,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (loginState is LoginState.Loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Text("使用 GitHub 账号登录")
-            }
+            Icon(Icons.Default.Sync, contentDescription = null)
+            Text("一键获取 GitHub Token")
         }
 
         Spacer(Modifier.height(24.dp))
 
         Text(
-            text = "或使用 Token",
+            text = "在打开的网页中生成 Token，复制后粘贴到下方",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(12.dp))
 
         OutlinedTextField(
             value = pat,
@@ -119,7 +109,11 @@ fun LoginScreen(
             enabled = pat.isNotBlank() && loginState !is LoginState.Loading,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("使用令牌登录")
+            if (loginState is LoginState.Loading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+            } else {
+                Text("使用令牌登录")
+            }
         }
 
         if (loginState is LoginState.Error) {
