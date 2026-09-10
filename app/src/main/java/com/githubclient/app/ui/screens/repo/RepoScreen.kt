@@ -344,7 +344,6 @@ private fun copyToClipboard(context: Context, text: String) {
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-@OptIn(ExperimentalLayoutApi::class)
 private fun RepoHeader(
     repo: Repository,
     onOpenCommits: () -> Unit,
