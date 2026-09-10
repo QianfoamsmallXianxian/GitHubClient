@@ -17,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,64 +85,99 @@ fun ZipUploadScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
+                },
+                actions = {
+                    if (state !is ZipUploadState.Idle) {
+                        androidx.compose.material3.TextButton(onClick = { viewModel.reset() }) { Text("重置") }
+                    }
                 }
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding)
-                .verticalScroll(rememberScrollState()).padding(16.dp)
+                .verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(
-                value = owner,
-                onValueChange = { owner = it },
-                label = { Text("Owner（账号名）") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = repo,
-                onValueChange = { repo = it },
-                label = { Text("仓库名") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedButton(
-                onClick = { picker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.UploadFile, contentDescription = null)
-                Text("  选择 ZIP 文件")
-            }
-            selectedName?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "已选择：$it",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            pickError?.let {
-                Spacer(Modifier.height(6.dp))
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            }
-
-            Spacer(Modifier.height(12.dp))
-            Row(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Text("上传后自动触发构建", style = MaterialTheme.typography.bodyMedium)
-                Switch(checked = autoTriggerBuild, onCheckedChange = { autoTriggerBuild = it })
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("目标仓库", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = owner,
+                        onValueChange = { owner = it },
+                        label = { Text("Owner（账号名）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = repo,
+                        onValueChange = { repo = it },
+                        label = { Text("仓库名") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("压缩包", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(
+                        onClick = {
+                            picker.launch(
+                                arrayOf(
+                                    "application/zip",
+                                    "application/x-zip-compressed",
+                                    "application/octet-stream"
+                                )
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null)
+                        Text("  选择 ZIP 文件")
+                    }
+                    selectedName?.let {
+                        Text(
+                            "已选择：$it",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    pickError?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text("上传后自动触发构建", style = MaterialTheme.typography.bodyMedium)
+                        Text("需仓库含可用的 workflow", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = autoTriggerBuild, onCheckedChange = { autoTriggerBuild = it })
+                }
+            }
+
             Button(
                 onClick = {
                     val uri = selectedUri
@@ -167,34 +204,35 @@ fun ZipUploadScreen(
                 Text(if (isRunning) "上传中..." else "开始上传")
             }
 
+            Text(
+                "提示：上传在后台执行，切到其他应用或锁屏也会继续。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             when (val s = state) {
                 is ZipUploadState.Extracting -> {
-                    Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Text(
                         "解压 ${s.current}/${s.total}：${s.currentFile}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 is ZipUploadState.Progress -> {
-                    Spacer(Modifier.height(12.dp))
                     val p = if (s.total == 0) 0f else s.done.toFloat() / s.total
                     LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
                     Text(
                         "上传 ${s.done}/${s.total}：${s.currentFile}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 is ZipUploadState.Success -> {
-                    Spacer(Modifier.height(12.dp))
                     Text(
                         "上传完成：成功 ${s.uploaded} 个，失败 ${s.failed} 个",
                         color = MaterialTheme.colorScheme.primary,
@@ -204,13 +242,11 @@ fun ZipUploadScreen(
                         Text(
                             s.details.take(5).joinToString("\n"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(top = 4.dp)
+                            style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
                 is ZipUploadState.Error -> {
-                    Spacer(Modifier.height(12.dp))
                     Text(s.message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 else -> Unit
