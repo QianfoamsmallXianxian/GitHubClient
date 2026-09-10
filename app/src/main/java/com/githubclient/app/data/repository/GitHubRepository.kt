@@ -18,16 +18,21 @@ class GitHubRepository @Inject constructor(
 ) {
     suspend fun getCurrentUser() = api.getCurrentUser()
 
-    suspend fun fetchRepos(forceRefresh: Boolean = false): List<Repository> {
+    /**
+     * 拉取当前账号的仓库并写入缓存。
+     * 只清理/写入该账号自己的缓存，避免切换账号后串号。
+     */
+    suspend fun fetchRepos(login: String, forceRefresh: Boolean = false): List<Repository> {
         val repos = api.getCurrentUserRepos()
         if (forceRefresh || repos.isNotEmpty()) {
-            repoCacheDao.clear()
-            repoCacheDao.upsertAll(repos.map { it.toEntity() })
+            repoCacheDao.clearFor(login)
+            repoCacheDao.upsertAll(repos.map { it.toEntity(login) })
         }
         return repos
     }
 
-    fun observeRepos(): Flow<List<RepoCacheEntity>> = repoCacheDao.observeRepos()
+    /** 只观察指定账号的仓库缓存 */
+    fun observeRepos(login: String): Flow<List<RepoCacheEntity>> = repoCacheDao.observeRepos(login)
 
     suspend fun getRepo(owner: String, name: String) = api.getRepository(owner, name)
 
@@ -88,8 +93,9 @@ class GitHubRepository @Inject constructor(
     suspend fun searchUsers(query: String, page: Int = 1) =
         api.searchUsers(query, page)
 
-    private fun Repository.toEntity() = RepoCacheEntity(
+    private fun Repository.toEntity(accountLogin: String) = RepoCacheEntity(
         id = id,
+        accountLogin = accountLogin,
         name = name,
         fullName = fullName,
         ownerLogin = owner.login,
