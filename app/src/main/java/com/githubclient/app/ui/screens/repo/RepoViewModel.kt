@@ -1,13 +1,10 @@
 package com.githubclient.app.ui.screens.repo
 
-import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.githubclient.app.data.model.Commit
 import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.data.repository.GitHubRepository
-import com.githubclient.app.data.repository.GitHubWriteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,7 +16,6 @@ import javax.inject.Inject
 @HiltViewModel
 class RepoViewModel @Inject constructor(
     private val repository: GitHubRepository,
-    private val writeRepository: GitHubWriteRepository,
     private val okHttpClient: OkHttpClient
 ) : ViewModel() {
 
@@ -41,88 +37,16 @@ class RepoViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
-    private val _commits = MutableStateFlow<List<Commit>>(emptyList())
-    val commits: StateFlow<List<Commit>> = _commits
-
-    private val _isCommitsLoading = MutableStateFlow(false)
-    val isCommitsLoading: StateFlow<Boolean> = _isCommitsLoading
-
-    private val _selectedPaths = MutableStateFlow<Set<String>>(emptySet())
-    val selectedPaths: StateFlow<Set<String>> = _selectedPaths
-
     private val _isDeleting = MutableStateFlow(false)
     val isDeleting: StateFlow<Boolean> = _isDeleting
 
-    private var allContents: List<RepoContent> = emptyList()
-    private var currentOwner: String = ""
-    private var currentName: String = ""
-    private var currentPath: String = ""
-
-    fun filterContents(query: String) {
-        _contents.value = if (query.isBlank()) allContents
-        else allContents.filter { it.name.contains(query, ignoreCase = true) }
-    }
-
-    fun toggleSelect(item: RepoContent) {
-        val cur = _selectedPaths.value.toMutableSet()
-        if (cur.contains(item.path)) cur.remove(item.path) else cur.add(item.path)
-        _selectedPaths.value = cur
-    }
-
-    fun clearSelection() { _selectedPaths.value = emptySet() }
-
-    fun deleteRepository(owner: String, name: String) {
-        viewModelScope.launch {
-            _message.value = null
-            try {
-                repository.deleteRepository(owner, name)
-                _message.value = "仓库已删除"
-            } catch (e: Exception) {
-                _message.value = when {
-                    e is retrofit2.HttpException && e.code() == 403 ->
-                        "删除失败(403)：当前 Token 缺少 delete_repo 权限，请到 GitHub 重新生成带 delete_repo 的 Token"
-                    e is retrofit2.HttpException && e.code() == 404 ->
-                        "删除失败(404)：仓库不存在或 Token 无权访问"
-                    else -> "删除失败: ${e.message}"
-                }
-            }
-        }
-    }
-
-    fun deleteSelected() {
-        val paths = _selectedPaths.value.toList()
-        if (paths.isEmpty()) return
-        viewModelScope.launch {
-            _isDeleting.value = true
-            try {
-                val res = writeRepository.batchDeleteFiles(currentOwner, currentName, paths)
-                val ok = res.count { it.endsWith(": ok") }
-                val fail = res.size - ok
-                _message.value = "已删除 $ok 个文件" + if (fail > 0) "，失败 $fail 个" else ""
-                _selectedPaths.value = emptySet()
-                loadContents(currentOwner, currentName, currentPath)
-            } catch (e: Exception) {
-                _message.value = "删除失败: ${e.message}"
-            } finally {
-                _isDeleting.value = false
-            }
-        }
-    }
-
-    fun loadCommits(owner: String, name: String) {
-        viewModelScope.launch {
-            _isCommitsLoading.value = true
-            try {
-                _commits.value = repository.getCommits(owner, name)
-            } catch (e: Exception) {
-                _commits.value = emptyList()
-            } finally {
-                _isCommitsLoading.value = false
-            }
-        }
-    }
+    private var lastOwner: String = ""
+    private var lastRepo: String = ""
+    private var lastPath: String = ""
 
     fun loadRepo(owner: String, name: String) {
+        lastOwner = owner
+        lastRepo = name
         viewModelScope.launch {
             _isLoading.value = true
             try {
@@ -136,20 +60,58 @@ class RepoViewModel @Inject constructor(
     }
 
     fun loadContents(owner: String, name: String, path: String) {
-        currentOwner = owner
-        currentName = name
-        currentPath = path
+        lastOwner = owner
+        lastRepo = name
+        lastPath = path
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val list = repository.getContents(owner, name, path)
-                allContents = list
-                _contents.value = list
+                _contents.value = repository.getContents(owner, name, path)
             } catch (e: Exception) {
-                allContents = emptyList()
                 _contents.value = emptyList()
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    /** 刷新当前目录 */
+    fun refreshCurrent() {
+        if (lastOwner.isNotBlank() && lastRepo.isNotBlank()) {
+            loadContents(lastOwner, lastRepo, lastPath)
+        }
+    }
+
+    private val _deleteState = MutableStateFlow<String?>(null)
+    val deleteState: StateFlow<String?> = _deleteState
+
+    fun clearMessage() {
+        _message.value = null
+        _deleteState.value = null
+    }
+
+    fun deleteRepo(owner: String, name: String, onDeleted: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.deleteRepository(owner, name)
+                _deleteState.value = "删除成功"
+                onDeleted()
+            } catch (e: Exception) {
+                _deleteState.value = e.message ?: "删除失败"
+            }
+        }
+    }
+
+    fun saveFileContent(owner: String, name: String, path: String, content: String) {
+        viewModelScope.launch {
+            _message.value = null
+            try {
+                val existing = repository.getFileContent(owner, name, path)
+                repository.updateFile(owner, name, path, content, existing.sha)
+                _fileContent.value = content
+                _message.value = "保存成功"
+            } catch (e: Exception) {
+                _message.value = e.message ?: "保存失败"
             }
         }
     }
@@ -160,17 +122,11 @@ class RepoViewModel @Inject constructor(
             _fileContent.value = null
             try {
                 val file = repository.getFileContent(owner, name, path)
-                val encoded = file.content
-                if (!encoded.isNullOrBlank() && file.encoding == "base64") {
-                    val decoded = Base64.decode(encoded, Base64.DEFAULT)
-                    _fileContent.value = decoded.toString(Charsets.UTF_8)
-                } else {
-                    val downloadUrl = file.downloadUrl
-                    if (downloadUrl != null) {
-                        val request = Request.Builder().url(downloadUrl).build()
-                        okHttpClient.newCall(request).execute().use { response ->
-                            _fileContent.value = response.body?.string()
-                        }
+                val downloadUrl = file.downloadUrl
+                if (downloadUrl != null) {
+                    val request = Request.Builder().url(downloadUrl).build()
+                    okHttpClient.newCall(request).execute().use { response ->
+                        _fileContent.value = response.body?.string()
                     }
                 }
             } catch (e: Exception) {
@@ -181,30 +137,48 @@ class RepoViewModel @Inject constructor(
         }
     }
 
-    fun saveFileContent(
-        owner: String,
-        name: String,
-        path: String,
-        content: String,
-        branch: String? = null
-    ) {
+    /** 删除单个文件 */
+    fun deleteSingleFile(owner: String, name: String, item: RepoContent) {
         viewModelScope.launch {
+            _isDeleting.value = true
+            _message.value = null
             try {
-                writeRepository.uploadOrUpdateFile(
-                    owner = owner,
-                    repo = name,
-                    path = path,
-                    content = content,
-                    message = "edit $path",
-                    branch = branch,
-                )
-                _message.value = "文件已保存"
-                loadContents(owner, name, path.substringBeforeLast('/', ""))
+                val branch = _repo.value?.defaultBranch
+                repository.deleteContentRecursively(owner, name, item, branch)
+                _message.value = "已删除 ${item.name}"
+                refreshCurrent()
             } catch (e: Exception) {
-                _message.value = "保存失败: ${e.message}"
+                _message.value = e.message ?: "删除失败"
+            } finally {
+                _isDeleting.value = false
             }
         }
     }
 
-    fun clearMessage() { _message.value = null }
+    /** 批量删除所选的文件与文件夹 */
+    fun deleteItems(owner: String, name: String, items: List<RepoContent>) {
+        if (items.isEmpty()) return
+        viewModelScope.launch {
+            _isDeleting.value = true
+            _message.value = null
+            val branch = _repo.value?.defaultBranch
+            var ok = 0
+            val failed = mutableListOf<String>()
+            for (item in items) {
+                try {
+                    repository.deleteContentRecursively(owner, name, item, branch)
+                    ok++
+                } catch (e: Exception) {
+                    failed.add(item.name)
+                }
+            }
+            _isDeleting.value = false
+            _message.value = when {
+                failed.isEmpty() -> "已删除 $ok 项"
+                ok == 0 -> "删除失败：${failed.joinToString("、")}"
+                else -> "已删除 $ok 项，失败：${failed.joinToString("、")}"
+            }
+            refreshCurrent()
+        }
+    }
 }
