@@ -1,6 +1,5 @@
 package com.githubclient.app.ui.screens.account
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +18,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -138,7 +138,7 @@ private fun AccountCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onSwitch).padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (account.avatarUrl.isNullOrBlank()) {
@@ -158,12 +158,19 @@ private fun AccountCard(
             Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(account.login, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (isActive) "当前账号" else "点击切换",
+                    if (isActive) "当前账号" else "未使用",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "删除账号", tint = MaterialTheme.colorScheme.error) }
+            if (!isActive) {
+                IconButton(onClick = onSwitch) {
+                    Icon(Icons.Default.SwapHoriz, contentDescription = "切换账号", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "删除账号", tint = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
