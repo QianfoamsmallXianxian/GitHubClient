@@ -69,6 +69,11 @@ class RepoViewModel @Inject constructor(
         _selectedPaths.value = cur
     }
 
+    /** 全选当前目录下所有文件与文件夹 */
+    fun selectAll() {
+        _selectedPaths.value = _contents.value.map { it.path }.toSet()
+    }
+
     fun clearSelection() { _selectedPaths.value = emptySet() }
 
     fun deleteRepository(owner: String, name: String) {
@@ -98,7 +103,7 @@ class RepoViewModel @Inject constructor(
                 val res = writeRepository.batchDeleteFiles(currentOwner, currentName, paths)
                 val ok = res.count { it.endsWith(": ok") }
                 val fail = res.size - ok
-                _message.value = "已删除 $ok 个文件" + if (fail > 0) "，失败 $fail 个" else ""
+                _message.value = "已删除 $ok 项" + if (fail > 0) "，失败 $fail 项" else ""
                 _selectedPaths.value = emptySet()
                 loadContents(currentOwner, currentName, currentPath)
             } catch (e: Exception) {
