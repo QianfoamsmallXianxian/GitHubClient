@@ -3,6 +3,7 @@ package com.githubclient.app.ui.screens.automation
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Upload
@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,10 +44,11 @@ fun AutomationScreen(
     onOpenZipUpload: () -> Unit,
     onOpenAiModify: () -> Unit
 ) {
+    // 已移除「创建仓库」入口：功能与「一键创建仓库并上传」重复，
+    // 且单独建空仓库没有实际用途。onOpenManualCreateRepo 保留仅为兼容导航调用。
     val features = listOf(
         FeatureItem("一键创建仓库并上传", "扫描本地项目目录，自动创建远程仓库并上传所有源码文件", Icons.Default.Folder, onOpenAutoCreateRepo),
         FeatureItem("ZIP 上传源码", "选择本地 ZIP 压缩包，解压后批量上传文本源码，可自动触发构建", Icons.Default.UploadFile, onOpenZipUpload),
-        FeatureItem("创建仓库", "只创建远程仓库，不上传文件", Icons.Default.CreateNewFolder, onOpenManualCreateRepo),
         FeatureItem("上传单个文件", "手动指定路径与内容，上传或更新一个文件", Icons.Default.Upload, onOpenUpload),
         FeatureItem("AI 修改源码", "输入需求自动改代码并提交", Icons.Default.AutoAwesome, onOpenAiModify),
         FeatureItem("AI 服务设置", "配置 AI API 地址与密钥", Icons.Default.Settings, onOpenAiSettings)
@@ -66,8 +68,8 @@ fun AutomationScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentPadding = PaddingValues(Dimens.ListPadding),
+            verticalArrangement = Arrangement.spacedBy(Dimens.Sm)
         ) {
             items(features) { feature ->
                 FeatureCard(feature)
@@ -88,17 +90,26 @@ private fun FeatureCard(item: FeatureItem) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = item.onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = Dimens.CardElevation)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(Dimens.CardPadding),
+            horizontalArrangement = Arrangement.spacedBy(Dimens.Md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(item.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Column {
+            Icon(
+                item.icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(Dimens.Xs)) {
                 Text(item.title, style = MaterialTheme.typography.titleMedium)
-                Text(item.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    item.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
