@@ -42,12 +42,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.githubclient.app.data.model.Release
 import com.githubclient.app.data.model.ReleaseAsset
 import com.githubclient.app.ui.components.EmptyState
 import com.githubclient.app.ui.components.LoadingState
+import com.githubclient.app.ui.components.ScrollableFill
 import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,8 +88,8 @@ fun ReleasesScreen(
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
             when {
-                isLoading && releases.isEmpty() -> LoadingState()
-                releases.isEmpty() -> EmptyState("暂无 Releases")
+                isLoading && releases.isEmpty() -> ScrollableFill { LoadingState() }
+                releases.isEmpty() -> ScrollableFill { EmptyState("暂无 Releases，下拉可刷新") }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(Dimens.ListPadding),
@@ -216,7 +216,6 @@ private fun AssetRow(asset: ReleaseAsset, onDownload: () -> Unit) {
                 contentDescription = null,
                 modifier = Modifier.size(Dimens.IconSm)
             )
-            // 图标与文字之间补间距
             Spacer(Modifier.width(Dimens.Sm))
             Text("下载")
         }

@@ -2,6 +2,7 @@ package com.githubclient.app.ui.screens.home
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,7 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
@@ -31,10 +34,15 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +84,10 @@ fun HomeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    // 下拉刷新状态。加载结束后复位。
+    var isRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(isLoading) { if (!isLoading) isRefreshing = false }
 
     Scaffold(
         topBar = {
@@ -121,10 +133,17 @@ fun HomeScreen(
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                isRefreshing = true
+                viewModel.refresh()
+            },
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
             when {
-                isLoading && repos.isEmpty() -> LoadingState()
-                repos.isEmpty() -> EmptyState("暂无仓库")
+                isLoading && repos.isEmpty() -> ScrollableFill { LoadingState() }
+                repos.isEmpty() -> ScrollableFill { EmptyState("暂无仓库，下拉可刷新") }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(Dimens.ListPadding),
@@ -136,6 +155,22 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * 让空态 / 加载态也能响应下拉手势。
+ * PullToRefreshBox 依赖可滚动的子内容来接收嵌套滚动事件，
+ * 若直接放不可滚动的 Row，下拉会被吞掉，表现为「怎么拉都没反应」。
+ */
+@Composable
+private fun ScrollableFill(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
+        content()
     }
 }
 

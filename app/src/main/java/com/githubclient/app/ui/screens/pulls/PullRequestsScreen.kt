@@ -39,6 +39,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.githubclient.app.data.model.PullRequest
 import com.githubclient.app.ui.components.EmptyState
 import com.githubclient.app.ui.components.LoadingState
+import com.githubclient.app.ui.components.ScrollableFill
 import com.githubclient.app.ui.theme.Dimens
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,8 +80,8 @@ fun PullRequestsScreen(
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
             when {
-                isLoading && prs.isEmpty() -> LoadingState()
-                prs.isEmpty() -> EmptyState("暂无 Pull Requests")
+                isLoading && prs.isEmpty() -> ScrollableFill { LoadingState() }
+                prs.isEmpty() -> ScrollableFill { EmptyState("暂无 Pull Requests，下拉可刷新") }
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(Dimens.ListPadding),
