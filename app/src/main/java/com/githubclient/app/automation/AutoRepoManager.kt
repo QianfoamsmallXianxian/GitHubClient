@@ -34,7 +34,6 @@ class AutoRepoManager @Inject constructor(
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
 
-    /** 通知刷新节流 */
     private val notifyEvery = 20
 
     fun previewScan(path: String): LocalProjectScanner.ScanResult = scanner.scanDirectory(path)
@@ -59,8 +58,23 @@ class AutoRepoManager @Inject constructor(
 
             _state.value = AutoRepoState.Creating("创建远程仓库 $repoName...")
             UploadForegroundService.update(appContext, "创建远程仓库 $repoName...", 0, 0)
-            val repo = writeRepository.createRepository(repoName, description, isPrivate, autoInit = true)
+
             val owner = githubRepository.getCurrentUser().login
+
+            // 尝试创建仓库；若同名仓库已存在，则复用它继续上传。
+            // GitHub 在重名时返回 422 "name already exists on this account"，
+            // 这不是致命错误——用户的意图是把本地目录传上去，
+            // 此时直接往已有仓库里传即可。
+            val repo = try {
+                writeRepository.createRepository(repoName, description, isPrivate, autoInit = true)
+            } catch (e: Exception) {
+                val msg = e.message ?: ""
+                if (msg.contains("already exists", ignoreCase = true)) {
+                    githubRepository.getRepo(owner, repoName)
+                } else {
+                    throw e
+                }
+            }
 
             val total = scan.files.size
             val map = LinkedHashMap<String, String>(total)
@@ -68,12 +82,11 @@ class AutoRepoManager @Inject constructor(
 
             _state.value = AutoRepoState.Uploading(0, total)
 
-            // 走 Git Data API：一次 commit 提交全部文件，不再逐文件提交导致 409
             val uploaded = writeRepository.uploadAllFiles(
                 owner = owner,
                 repo = repo.name,
                 files = map,
-                message = "initial upload: $repoName",
+                message = "upload source: $repoName",
                 branch = null
             ) { done, t, _ ->
                 _state.value = AutoRepoState.Uploading(done, t)
