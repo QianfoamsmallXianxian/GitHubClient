@@ -14,7 +14,7 @@ sealed interface AutoRepoState {
     data class Scanning(val message: String) : AutoRepoState
     data class Creating(val message: String) : AutoRepoState
     data class Uploading(val current: Int, val total: Int) : AutoRepoState
-    data class Success(val repoFullName: String, val uploadedCount: Int) : AutoRepoState
+    data class Success(val repoFullName: String, val uploadedCount: Int, val failed: List<String>) : AutoRepoState
     data class Error(val message: String) : AutoRepoState
 }
 
@@ -27,6 +27,9 @@ class AutoRepoManager @Inject constructor(
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
 
+    /** 只扫描预览，不创建仓库，方便用户在界面上确认目录是否正确 */
+    fun previewScan(path: String): LocalProjectScanner.ScanResult = scanner.scanDirectory(path)
+
     suspend fun createRepoAndUploadDirectory(
         repoName: String,
         description: String?,
@@ -37,7 +40,11 @@ class AutoRepoManager @Inject constructor(
             _state.value = AutoRepoState.Scanning("扫描本地目录...")
             val scanResult = scanner.scanDirectory(localPath)
             if (scanResult.files.isEmpty()) {
-                throw IllegalStateException("未扫描到可上传文件（目录为空或无文本文件）")
+                val reason = scanResult.skippedFiles.firstOrNull()
+                throw IllegalStateException(
+                    if (reason != null) "未扫描到可上传文件：$reason"
+                    else "未扫描到可上传文件（目录为空或无文本文件）"
+                )
             }
 
             _state.value = AutoRepoState.Creating("创建远程仓库 $repoName...")
@@ -46,6 +53,7 @@ class AutoRepoManager @Inject constructor(
 
             val total = scanResult.files.size
             var uploaded = 0
+            val failed = mutableListOf<String>()
             for (file in scanResult.files) {
                 uploaded++
                 _state.value = AutoRepoState.Uploading(uploaded, total)
@@ -57,10 +65,20 @@ class AutoRepoManager @Inject constructor(
                         content = file.content,
                         message = "upload ${file.relativePath}"
                     )
+                }.onFailure { e ->
+                    failed.add("${file.relativePath}: ${e.message ?: "未知错误"}")
                 }
             }
 
-            val success = AutoRepoState.Success(repo.fullName, uploaded)
+            val successCount = total - failed.size
+            if (successCount == 0) {
+                throw IllegalStateException(
+                    "仓库已创建，但全部文件上传失败。\n首个错误：${failed.firstOrNull() ?: "未知"}\n" +
+                        "常见原因：令牌缺少 repo 权限；若含 .github/workflows 文件还需 workflow 权限。"
+                )
+            }
+
+            val success = AutoRepoState.Success(repo.fullName, successCount, failed)
             _state.value = success
             success
         }.onFailure { e ->
