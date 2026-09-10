@@ -16,9 +16,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipFile
-import java.io.BufferedOutputStream
-import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -144,41 +141,39 @@ class ZipUploadManager @Inject constructor(
         }
     }
 
+    /**
+     * 直接在内存里解包，不落临时文件。
+     * commons-compress 的 ZipFile.Builder 支持 setByteArray，内部会包成
+     * SeekableInMemoryByteChannel，省掉「写盘 → 再读回来」的完整往返。
+     */
     private fun extractTextFilesWithProgress(zipBytes: ByteArray): Map<String, String> {
-        val tempFile = File.createTempFile("src_upload", ".zip")
-        try {
-            // 用缓冲流写盘，避免小块直写导致的系统调用开销
-            BufferedOutputStream(FileOutputStream(tempFile), 64 * 1024).use { it.write(zipBytes) }
-            val files = linkedMapOf<String, String>()
-            ZipFile.builder().setFile(tempFile).get().use { zip ->
-                val entries = zip.entries
-                val allEntries = mutableListOf<ZipArchiveEntry>()
-                while (entries.hasMoreElements()) {
-                    allEntries.add(entries.nextElement())
-                }
-                val totalEntries = allEntries.size
-                var current = 0
-                for (entry in allEntries) {
-                    current++
-                    if (entry.isDirectory) continue
-                    val path = entry.name.replace('\\', '/').trimStart('/')
-                    val ext = path.substringAfterLast('.', "").lowercase()
-                    val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
-                    if (ext in textExtensions || isGitignore) {
-                        // 降低状态刷新频率，解压大包时明显更快
-                        if (current % progressEvery == 0 || current == totalEntries) {
-                            _state.value = ZipUploadState.Extracting(current, totalEntries, path)
-                        }
-                        zip.getInputStream(entry).use { input ->
-                            files[path] = input.readBytes().toString(Charsets.UTF_8)
-                        }
+        val files = linkedMapOf<String, String>()
+        ZipFile.builder().setByteArray(zipBytes).get().use { zip ->
+            val entries = zip.entries
+            val allEntries = mutableListOf<ZipArchiveEntry>()
+            while (entries.hasMoreElements()) {
+                allEntries.add(entries.nextElement())
+            }
+            val totalEntries = allEntries.size
+            var current = 0
+            for (entry in allEntries) {
+                current++
+                if (entry.isDirectory) continue
+                val path = entry.name.replace('\\', '/').trimStart('/')
+                val ext = path.substringAfterLast('.', "").lowercase()
+                val isGitignore = path.endsWith(".gitignore", ignoreCase = true)
+                if (ext in textExtensions || isGitignore) {
+                    // 降低状态刷新频率，解压大包时明显更快
+                    if (current % progressEvery == 0 || current == totalEntries) {
+                        _state.value = ZipUploadState.Extracting(current, totalEntries, path)
+                    }
+                    zip.getInputStream(entry).use { input ->
+                        files[path] = input.readBytes().toString(Charsets.UTF_8)
                     }
                 }
             }
-            return stripCommonRoot(files)
-        } finally {
-            tempFile.delete()
         }
+        return stripCommonRoot(files)
     }
 
     private fun stripCommonRoot(files: Map<String, String>): Map<String, String> {
