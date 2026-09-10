@@ -14,13 +14,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -72,20 +70,6 @@ fun AutomationScreen(
             Icons.Default.AutoAwesome,
             onOpenAiModify,
             "使用方法：\n1. 输入仓库 Owner 和名称\n2. 描述你想改的功能或修复的问题\n3. 系统调用 AI 生成修改方案\n4. 确认后自动写入文件并提交到 GitHub"
-        ),
-        FeatureItem(
-            "手动创建仓库",
-            "填写信息创建远程仓库",
-            Icons.Default.Add,
-            onOpenManualCreateRepo,
-            "使用方法：\n1. 输入仓库名称\n2. 可选填写描述\n3. 选择公开或私有\n4. 点击创建\n创建成功后可在主页查看"
-        ),
-        FeatureItem(
-            "上传源码",
-            "上传或替换单个仓库文件",
-            Icons.Default.Upload,
-            onOpenUpload,
-            "使用方法：\n1. 输入 Owner 和仓库名\n2. 输入文件在仓库中的路径\n3. 粘贴或输入文件内容\n4. 点击上传\n如果文件已存在会自动覆盖"
         ),
         FeatureItem(
             "AI 服务设置",
