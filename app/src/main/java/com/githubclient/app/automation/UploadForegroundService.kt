@@ -16,12 +16,11 @@ import com.githubclient.app.MainActivity
 /**
  * 上传任务的前台服务。
  *
- * 为什么需要它：
- * 上传跑在 ApplicationScope（SupervisorJob + Dispatchers.IO）里，协程本身不会因为
- * 页面销毁而取消。但 App 进入后台后进程降级为 cached，系统内存回收时会直接杀掉进程，
- * 表现就是「熄屏 / 切后台后上传中断」。
+ * 作用：挂上前台服务后，系统会保留进程，切后台 / 熄屏时上传不会被回收。
  *
- * 挂上前台服务后，系统会保留进程并显示常驻通知，上传期间不会被回收。
+ * 注意：前台服务只是「保活增强」，不是上传的必要条件。
+ * 因此这里所有系统调用都做了兜底，任何一步失败都不会让 App 崩溃——
+ * 最坏情况只是没有常驻通知，上传本身照常进行。
  */
 class UploadForegroundService : Service() {
 
@@ -29,23 +28,29 @@ class UploadForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        runCatching { createChannel() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val title = intent?.getStringExtra(EXTRA_TITLE) ?: "正在上传"
-        val progress = intent?.getIntExtra(EXTRA_PROGRESS, 0) ?: 0
-        val max = intent?.getIntExtra(EXTRA_MAX, 0) ?: 0
+        try {
+            val title = intent?.getStringExtra(EXTRA_TITLE) ?: "正在上传"
+            val progress = intent?.getIntExtra(EXTRA_PROGRESS, 0) ?: 0
+            val max = intent?.getIntExtra(EXTRA_MAX, 0) ?: 0
 
-        val notification = buildNotification(title, progress, max)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+            val notification = buildNotification(title, progress, max)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (t: Throwable) {
+            // 前台服务启动失败（系统限制 / 权限 / 类型问题）。
+            // 不能让异常冒出去崩溃 App，直接停止本服务，上传继续在协程里跑。
+            runCatching { stopSelf() }
         }
         return START_NOT_STICKY
     }
@@ -99,26 +104,34 @@ class UploadForegroundService : Service() {
         const val EXTRA_PROGRESS = "progress"
         const val EXTRA_MAX = "max"
 
-        /** 任务开始：拉起前台服务 */
+        /**
+         * 任务开始：拉起前台服务。
+         * 用 runCatching 兜底——startForegroundService 在部分系统/时机下会抛异常，
+         * 未捕获的话会直接在调用线程（主线程）崩溃。
+         */
         fun start(context: Context, title: String) {
-            val intent = Intent(context, UploadForegroundService::class.java).apply {
-                putExtra(EXTRA_TITLE, title)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            runCatching {
+                val intent = Intent(context, UploadForegroundService::class.java).apply {
+                    putExtra(EXTRA_TITLE, title)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             }
         }
 
         /** 进度更新：服务已在前台，直接 startService 刷新通知即可 */
         fun update(context: Context, title: String, progress: Int, max: Int) {
-            val intent = Intent(context, UploadForegroundService::class.java).apply {
-                putExtra(EXTRA_TITLE, title)
-                putExtra(EXTRA_PROGRESS, progress)
-                putExtra(EXTRA_MAX, max)
+            runCatching {
+                val intent = Intent(context, UploadForegroundService::class.java).apply {
+                    putExtra(EXTRA_TITLE, title)
+                    putExtra(EXTRA_PROGRESS, progress)
+                    putExtra(EXTRA_MAX, max)
+                }
+                context.startService(intent)
             }
-            runCatching { context.startService(intent) }
         }
 
         /** 任务结束：撤下通知 */
