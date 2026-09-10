@@ -12,15 +12,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import javax.inject.Inject
 
 @HiltViewModel
 class RepoViewModel @Inject constructor(
     private val repository: GitHubRepository,
-    private val writeRepository: GitHubWriteRepository,
-    private val okHttpClient: OkHttpClient
+    private val writeRepository: GitHubWriteRepository
 ) : ViewModel() {
 
     private val _repo = MutableStateFlow<Repository?>(null)
@@ -214,6 +211,12 @@ class RepoViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 读取文件内容。
+     * 统一走 contents 接口拿 base64 再解码——这条路径会带上 GitHub 认证头，
+     * 私有仓库同样可读。不再回退到 download_url（raw 域名不在拦截器注入范围内，
+     * 私有仓库会 404）。
+     */
     fun loadFileContent(owner: String, name: String, path: String) {
         viewModelScope.launch {
             _isFileLoading.value = true
@@ -225,16 +228,10 @@ class RepoViewModel @Inject constructor(
                     val decoded = Base64.decode(encoded, Base64.DEFAULT)
                     _fileContent.value = decoded.toString(Charsets.UTF_8)
                 } else {
-                    val downloadUrl = file.downloadUrl
-                    if (downloadUrl != null) {
-                        val request = Request.Builder().url(downloadUrl).build()
-                        okHttpClient.newCall(request).execute().use { response ->
-                            _fileContent.value = response.body?.string()
-                        }
-                    }
+                    _fileContent.value = "（该文件无文本内容或为二进制文件，暂不支持预览）"
                 }
             } catch (e: Exception) {
-                _fileContent.value = null
+                _fileContent.value = "读取失败：${e.message}"
             } finally {
                 _isFileLoading.value = false
             }
