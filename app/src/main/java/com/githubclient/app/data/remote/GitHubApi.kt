@@ -10,16 +10,16 @@ import com.githubclient.app.data.model.SearchRepositoriesResponse
 import com.githubclient.app.data.model.SearchUsersResponse
 import com.githubclient.app.data.model.User
 import com.githubclient.app.data.model.Workflow
+import com.githubclient.app.data.model.WorkflowRunsResponse
 import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.model.WorkflowJobsResponse
-import com.githubclient.app.data.model.WorkflowListResponse
-import com.githubclient.app.data.model.WorkflowRunsResponse
+import retrofit2.Response
 import retrofit2.http.Body
-import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.DELETE
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -107,7 +107,7 @@ interface GitHubApi {
     suspend fun getWorkflows(
         @Path("owner") owner: String,
         @Path("repo") repo: String
-    ): WorkflowListResponse
+    ): List<Workflow>
 
     @GET("repos/{owner}/{repo}/actions/runs")
     suspend fun getWorkflowRuns(
@@ -115,20 +115,6 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Query("per_page") perPage: Int = 30
     ): WorkflowRunsResponse
-
-    @GET("repos/{owner}/{repo}/actions/runs/{run_id}")
-    suspend fun getWorkflowRun(
-        @Path("owner") owner: String,
-        @Path("repo") repo: String,
-        @Path("run_id") runId: Long
-    ): WorkflowRun
-
-    @GET("repos/{owner}/{repo}/actions/runs/{run_id}/jobs")
-    suspend fun getWorkflowJobs(
-        @Path("owner") owner: String,
-        @Path("repo") repo: String,
-        @Path("run_id") runId: Long
-    ): WorkflowJobsResponse
 
     @GET("repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs")
     suspend fun getWorkflowRunsByWorkflow(
@@ -163,13 +149,11 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
 
-    @DELETE("repos/{owner}/{repo}/actions/runs/{run_id}")
-    suspend fun deleteWorkflowRun(
-        @Path("owner") owner: String,
-        @Path("repo") repo: String,
-        @Path("run_id") runId: Long,
+    @POST("user/repos")
+    suspend fun createRepository(
+        @Body body: CreateRepoRequest,
         @Header("Accept") accept: String = "application/vnd.github+json"
-    )
+    ): Repository
 
     @DELETE("repos/{owner}/{repo}")
     suspend fun deleteRepository(
@@ -177,12 +161,6 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
-
-    @POST("user/repos")
-    suspend fun createRepository(
-        @Body body: CreateRepoRequest,
-        @Header("Accept") accept: String = "application/vnd.github+json"
-    ): Repository
 
     @PUT("repos/{owner}/{repo}/contents/{path}")
     suspend fun updateFile(
@@ -193,6 +171,7 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
 
+    /** 删除单个文件（GitHub 要求提供文件当前 sha） */
     @DELETE("repos/{owner}/{repo}/contents/{path}")
     suspend fun deleteFile(
         @Path("owner") owner: String,
@@ -200,7 +179,7 @@ interface GitHubApi {
         @Path("path") path: String,
         @Body body: DeleteFileRequest,
         @Header("Accept") accept: String = "application/vnd.github+json"
-    )
+    ): Response<Unit>
 
     @GET("search/repositories")
     suspend fun searchRepositories(
