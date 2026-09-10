@@ -88,6 +88,7 @@ fun AppNavHost() {
             HomeScreen(
                 onOpenRepo = { owner, name -> navController.navigate(Routes.repo(owner, name)) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                onOpenPrompt = { navController.navigate(Routes.PROMPT) },
                 onOpenAutomation = { navController.navigate(Routes.AUTOMATION) },
                 onOpenCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenAccount = { navController.navigate(Routes.ACCOUNT) }
@@ -101,7 +102,7 @@ fun AppNavHost() {
                         popUpTo(0) { inclusive = true }
                     }
                 },
-                onOpenTokenSettings = { navController.navigate(Routes.TOKEN_SETTINGS) },
+                onOpenTokenSettings = { navController.navigate(Routes.TOKEN_SETTINGS) }
             )
         }
         composable(Routes.TOKEN_SETTINGS) {
@@ -115,7 +116,10 @@ fun AppNavHost() {
             )
         }
         composable(Routes.SEARCH) {
-            SearchScreen(onBack = { navController.popBackStack() })
+            SearchScreen(
+                onBack = { navController.popBackStack() },
+                onOpenRepo = { owner, name -> navController.navigate(Routes.repo(owner, name)) }
+            )
         }
         composable(Routes.PROMPT) {
             PromptScreen(onBack = { navController.popBackStack() })
@@ -163,6 +167,8 @@ fun AppNavHost() {
                 name = name,
                 onBack = { navController.popBackStack() },
                 onOpenActions = { navController.navigate(Routes.actions(owner, name)) },
+                onOpenIssues = { navController.navigate(Routes.issues(owner, name)) },
+                onOpenPulls = { navController.navigate(Routes.pulls(owner, name)) },
                 onOpenReleases = { navController.navigate(Routes.releases(owner, name)) },
                 onDeleted = { navController.popBackStack() }
             )
