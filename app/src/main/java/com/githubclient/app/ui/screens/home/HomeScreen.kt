@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
@@ -92,8 +92,8 @@ fun HomeScreen(
                 NavigationBarItem(
                     selected = false,
                     onClick = onOpenAutomation,
-                    icon = { Icon(Icons.Default.PlayArrow, contentDescription = "自动化") },
-                    label = { Text("自动化") }
+                    icon = { Icon(Icons.Default.Apps, contentDescription = "功能") },
+                    label = { Text("功能") }
                 )
             }
         }
