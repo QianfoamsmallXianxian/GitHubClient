@@ -14,8 +14,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
@@ -42,11 +44,15 @@ fun AutomationScreen(
     onOpenManualCreateRepo: () -> Unit,
     onOpenUpload: () -> Unit,
     onOpenZipUpload: () -> Unit,
-    onOpenAiModify: () -> Unit
+    onOpenAiModify: () -> Unit,
+    onOpenPublish: () -> Unit,
+    onOpenTerminal: () -> Unit
 ) {
     // 已移除「创建仓库」入口：功能与「一键创建仓库并上传」重复，
     // 且单独建空仓库没有实际用途。onOpenManualCreateRepo 保留仅为兼容导航调用。
     val features = listOf(
+        FeatureItem("一键上传构建", "只需输入仓库名称，自动匹配登录 token 上传源码（目录/ZIP）并触发构建", Icons.Default.CloudUpload, onOpenPublish),
+        FeatureItem("终端", "内置终端，可直接执行命令（可选 Root）", Icons.Default.Terminal, onOpenTerminal),
         FeatureItem("一键创建仓库并上传", "扫描本地项目目录，自动创建远程仓库并上传所有源码文件", Icons.Default.Folder, onOpenAutoCreateRepo),
         FeatureItem("ZIP 上传源码", "选择本地 ZIP 压缩包，解压后批量上传文本源码，可自动触发构建", Icons.Default.UploadFile, onOpenZipUpload),
         FeatureItem("上传单个文件", "手动指定路径与内容，上传或更新一个文件", Icons.Default.Upload, onOpenUpload),
