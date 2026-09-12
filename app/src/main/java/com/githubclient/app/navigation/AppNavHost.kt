@@ -1,6 +1,8 @@
 package com.githubclient.app.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -71,6 +73,16 @@ object Routes {
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
+    val sessionViewModel: SessionViewModel = hiltViewModel()
+    LaunchedEffect(Unit) {
+        sessionViewModel.checkExpiredOnStart()
+        sessionViewModel.sessionExpired.collect {
+            navController.navigate(Routes.LOGIN) {
+                popUpTo(0) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
     NavHost(
         navController = navController,
         startDestination = Routes.LOGIN
