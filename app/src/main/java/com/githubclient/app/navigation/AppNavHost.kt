@@ -12,11 +12,9 @@ import com.githubclient.app.ui.screens.account.AccountScreen
 import com.githubclient.app.ui.screens.actions.ActionRunDetailScreen
 import com.githubclient.app.ui.screens.actions.ActionsScreen
 import com.githubclient.app.ui.screens.actions.WorkflowDispatchScreen
-import com.githubclient.app.ui.screens.automation.AutoCreateRepoScreen
 import com.githubclient.app.ui.screens.automation.AutomationScreen
 import com.githubclient.app.ui.screens.automation.CreateRepoScreen
 import com.githubclient.app.ui.screens.automation.UploadScreen
-import com.githubclient.app.ui.screens.automation.ZipUploadScreen
 import com.githubclient.app.ui.screens.home.HomeScreen
 import com.githubclient.app.ui.screens.issues.IssueDetailScreen
 import com.githubclient.app.ui.screens.issues.IssuesScreen
@@ -38,9 +36,7 @@ object Routes {
     const val PROMPT = "prompt"
     const val AUTOMATION = "automation"
     const val CREATE_REPO = "automation/create_repo"
-    const val AUTO_CREATE_REPO = "automation/auto_create_repo"
     const val UPLOAD = "automation/upload"
-    const val ZIP_UPLOAD = "automation/zip_upload"
     const val TOKEN_SETTINGS = "settings/token"
     const val PUBLISH = "publish"
     const val REPO = "repo/{owner}/{name}"
@@ -139,24 +135,16 @@ fun AppNavHost() {
         composable(Routes.AUTOMATION) {
             AutomationScreen(
                 onBack = { navController.popBackStack() },
-                onOpenAutoCreateRepo = { navController.navigate(Routes.AUTO_CREATE_REPO) },
                 onOpenManualCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenUpload = { navController.navigate(Routes.UPLOAD) },
-                onOpenZipUpload = { navController.navigate(Routes.ZIP_UPLOAD) },
                 onOpenPublish = { navController.navigate(Routes.PUBLISH) },
             )
         }
         composable(Routes.CREATE_REPO) {
             CreateRepoScreen(onBack = { navController.popBackStack() })
         }
-        composable(Routes.AUTO_CREATE_REPO) {
-            AutoCreateRepoScreen(onBack = { navController.popBackStack() })
-        }
         composable(Routes.UPLOAD) {
             UploadScreen(onBack = { navController.popBackStack() })
-        }
-        composable(Routes.ZIP_UPLOAD) {
-            ZipUploadScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = Routes.REPO,
