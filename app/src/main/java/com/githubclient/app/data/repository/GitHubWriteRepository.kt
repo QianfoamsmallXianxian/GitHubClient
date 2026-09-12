@@ -167,6 +167,7 @@ class GitHubWriteRepository @Inject constructor(
         message: String = "batch upload",
         branch: String? = null,
         blobConcurrency: Int = 3,
+        chunkSize: Int = 200,
         onProgress: (suspend (Int, Int, String) -> Unit)? = null
     ): Int = withContext(Dispatchers.IO) {
         if (files.isEmpty()) return@withContext 0
@@ -189,37 +190,44 @@ class GitHubWriteRepository @Inject constructor(
 
         val total = files.size
         val done = AtomicInteger(0)
-        val items = mutableListOf<TreeItem>()
-        val lock = Mutex()
-        files.entries.toList().chunked(blobConcurrency).forEach { chunk ->
-            coroutineScope {
-                chunk.map { (path, content) ->
-                    async {
-                        val b64 = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
-                        rateGate()
-                        val blob: BlobResponse = callWithRetry("createBlob:$path") {
-                            api.createBlob(owner, repo, CreateBlobRequest(b64))
+        val chunks = files.entries.toList().chunked(chunkSize)
+        chunks.forEachIndexed { idx, chunk ->
+            val items = mutableListOf<TreeItem>()
+            val lock = Mutex()
+            chunk.chunked(blobConcurrency).forEach { sub ->
+                coroutineScope {
+                    sub.map { (path, content) ->
+                        async {
+                            val b64 = Base64.encodeToString(content.toByteArray(), Base64.NO_WRAP)
+                            rateGate()
+                            val blob: BlobResponse = callWithRetry("createBlob:$path") {
+                                api.createBlob(owner, repo, CreateBlobRequest(b64))
+                            }
+                            lock.withLock { items.add(TreeItem(path, "100644", "blob", blob.sha)) }
+                            onProgress?.invoke(done.incrementAndGet(), total, path)
                         }
-                        lock.withLock { items.add(TreeItem(path, "100644", "blob", blob.sha)) }
-                        onProgress?.invoke(done.incrementAndGet(), total, path)
-                    }
-                }.awaitAll()
+                    }.awaitAll()
+                }
             }
-        }
 
-        val parent = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
-        val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
+            val parent = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
+            val base = parent?.let { runCatching { api.getCommitDetail(owner, repo, it).tree.sha }.getOrNull() }
 
-        val tree = callWithRetry("createTree") {
-            api.createTree(owner, repo, CreateTreeRequest(items, base))
-        }
-        val commit = callWithRetry("createCommit") {
-            api.createCommit(owner, repo, CreateCommitRequest(message, tree.sha, if (parent != null) listOf(parent) else emptyList()))
-        }
-        if (parent != null) {
-            callWithRetry("updateRef") { api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false)) }
-        } else {
-            callWithRetry("createRef") { api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha)) }
+            val tree = callWithRetry("createTree#$idx") {
+                api.createTree(owner, repo, CreateTreeRequest(items, base))
+            }
+            val commitMsg = if (chunks.size == 1) message else "$message ($idx/${chunks.size})"
+            val commit = callWithRetry("createCommit#$idx") {
+                api.createCommit(
+                    owner, repo,
+                    CreateCommitRequest(commitMsg, tree.sha, if (parent != null) listOf(parent) else emptyList())
+                )
+            }
+            if (parent != null) {
+                callWithRetry("updateRef#$idx") { api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false)) }
+            } else {
+                callWithRetry("createRef") { api.createRef(owner, repo, CreateRefRequest("refs/heads/$br", commit.sha)) }
+            }
         }
         total
     }
