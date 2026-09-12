@@ -22,12 +22,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -62,7 +60,6 @@ fun TokenSettingsScreen(
 ) {
     val accounts by viewModel.accounts.collectAsState()
     val activeLogin by viewModel.activeLogin.collectAsState()
-    val isFetchingToken by viewModel.isFetchingToken.collectAsState()
     val message by viewModel.message.collectAsState()
     var showTokenDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -105,20 +102,6 @@ fun TokenSettingsScreen(
                 )
             }
 
-            item {
-                Button(
-                    onClick = { viewModel.startOAuthTokenFetch() },
-                    enabled = !isFetchingToken,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (isFetchingToken) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.Sync, contentDescription = null)
-                    }
-                    Text(if (isFetchingToken) "正在获取..." else "一键获取最新 Token")
-                }
-            }
 
             item {
                 Button(
@@ -142,7 +125,7 @@ fun TokenSettingsScreen(
 
             item {
                 Text(
-                    "Token 获取方法：\n1. 一键获取：通过 GitHub OAuth 授权自动获取最新 Token\n2. 手动获取：打开 GitHub → Settings → Developer settings → Personal access tokens，勾选 repo 和 workflow 权限后复制粘贴",
+                    "Token 获取方法：打开 GitHub 设置里的 Developer settings，进入 Personal access tokens，勾选 repo 和 workflow 权限后生成，复制粘贴到上方按钮。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
