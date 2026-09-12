@@ -25,7 +25,6 @@ import com.githubclient.app.ui.screens.issues.IssuesScreen
 import com.githubclient.app.ui.screens.login.LoginScreen
 import com.githubclient.app.ui.screens.prompt.PromptScreen
 import com.githubclient.app.ui.screens.publish.PublishScreen
-import com.githubclient.app.ui.screens.terminal.TerminalScreen
 import com.githubclient.app.ui.screens.pulls.PullRequestDetailScreen
 import com.githubclient.app.ui.screens.pulls.PullRequestsScreen
 import com.githubclient.app.ui.screens.releases.ReleasesScreen
@@ -48,7 +47,6 @@ object Routes {
     const val AI_MODIFY = "automation/ai_modify"
     const val TOKEN_SETTINGS = "settings/token"
     const val PUBLISH = "publish"
-    const val TERMINAL = "terminal"
     const val REPO = "repo/{owner}/{name}"
     const val ACTIONS = "repo/{owner}/{name}/actions"
     const val DISPATCH = "repo/{owner}/{name}/actions/dispatch"
@@ -133,9 +131,6 @@ fun AppNavHost() {
         composable(Routes.PUBLISH) {
             PublishScreen(onBack = { navController.popBackStack() })
         }
-        composable(Routes.TERMINAL) {
-            TerminalScreen(onBack = { navController.popBackStack() })
-        }
         composable(Routes.SEARCH) {
             SearchScreen(
                 onBack = { navController.popBackStack() },
@@ -155,7 +150,6 @@ fun AppNavHost() {
                 onOpenZipUpload = { navController.navigate(Routes.ZIP_UPLOAD) },
                 onOpenAiModify = { navController.navigate(Routes.AI_MODIFY) },
                 onOpenPublish = { navController.navigate(Routes.PUBLISH) },
-                onOpenTerminal = { navController.navigate(Routes.TERMINAL) }
             )
         }
         composable(Routes.CREATE_REPO) {
