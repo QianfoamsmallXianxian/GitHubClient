@@ -12,8 +12,6 @@ import com.githubclient.app.ui.screens.account.AccountScreen
 import com.githubclient.app.ui.screens.actions.ActionRunDetailScreen
 import com.githubclient.app.ui.screens.actions.ActionsScreen
 import com.githubclient.app.ui.screens.actions.WorkflowDispatchScreen
-import com.githubclient.app.ui.screens.automation.AiModifyScreen
-import com.githubclient.app.ui.screens.automation.AiSettingsScreen
 import com.githubclient.app.ui.screens.automation.AutoCreateRepoScreen
 import com.githubclient.app.ui.screens.automation.AutomationScreen
 import com.githubclient.app.ui.screens.automation.CreateRepoScreen
@@ -43,8 +41,6 @@ object Routes {
     const val AUTO_CREATE_REPO = "automation/auto_create_repo"
     const val UPLOAD = "automation/upload"
     const val ZIP_UPLOAD = "automation/zip_upload"
-    const val AI_SETTINGS = "automation/ai_settings"
-    const val AI_MODIFY = "automation/ai_modify"
     const val TOKEN_SETTINGS = "settings/token"
     const val PUBLISH = "publish"
     const val REPO = "repo/{owner}/{name}"
@@ -143,12 +139,10 @@ fun AppNavHost() {
         composable(Routes.AUTOMATION) {
             AutomationScreen(
                 onBack = { navController.popBackStack() },
-                onOpenAiSettings = { navController.navigate(Routes.AI_SETTINGS) },
                 onOpenAutoCreateRepo = { navController.navigate(Routes.AUTO_CREATE_REPO) },
                 onOpenManualCreateRepo = { navController.navigate(Routes.CREATE_REPO) },
                 onOpenUpload = { navController.navigate(Routes.UPLOAD) },
                 onOpenZipUpload = { navController.navigate(Routes.ZIP_UPLOAD) },
-                onOpenAiModify = { navController.navigate(Routes.AI_MODIFY) },
                 onOpenPublish = { navController.navigate(Routes.PUBLISH) },
             )
         }
@@ -163,12 +157,6 @@ fun AppNavHost() {
         }
         composable(Routes.ZIP_UPLOAD) {
             ZipUploadScreen(onBack = { navController.popBackStack() })
-        }
-        composable(Routes.AI_SETTINGS) {
-            AiSettingsScreen(onBack = { navController.popBackStack() })
-        }
-        composable(Routes.AI_MODIFY) {
-            AiModifyScreen(onBack = { navController.popBackStack() })
         }
         composable(
             route = Routes.REPO,
