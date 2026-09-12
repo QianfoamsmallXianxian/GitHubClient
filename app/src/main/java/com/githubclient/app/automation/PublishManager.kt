@@ -59,7 +59,7 @@ class PublishManager @Inject constructor(
     }
 
     private fun log(line: String) {
-        _log.value = _log.value + line
+        synchronized(this) { _log.value = _log.value + line }
     }
 
     fun publish(repoName: String, sourcePath: String, triggerDispatch: Boolean) {
@@ -70,6 +70,7 @@ class PublishManager @Inject constructor(
     }
 
     private suspend fun run(repoName: String, sourcePath: String, triggerDispatch: Boolean) {
+        UploadForegroundService.start(appContext, "准备上传源码...")
         try {
             val name = repoName.trim().substringAfterLast('/').substringBefore(' ')
             if (name.isBlank()) {
@@ -100,6 +101,7 @@ class PublishManager @Inject constructor(
                 branch = null
             ) { done, total, path ->
                 if (done == total || done % 20 == 0) log("上传 $done/$total  $path")
+                UploadForegroundService.update(appContext, "上传 " + done + "/" + total, done, total)
             }
             log("上传完成: $uploaded 个文件")
             log("已推送到默认分支，监听 push 的 Actions 会自动构建")
@@ -114,6 +116,8 @@ class PublishManager @Inject constructor(
         } catch (e: Exception) {
             log("错误: ${e.message}")
             _state.value = PublishState.Error(e.message ?: "发布失败")
+        } finally {
+            UploadForegroundService.stop(appContext)
         }
     }
 
