@@ -61,7 +61,7 @@ fun PublishScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("一键上传构建") },
+                title = { Text("终端本地上传") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
