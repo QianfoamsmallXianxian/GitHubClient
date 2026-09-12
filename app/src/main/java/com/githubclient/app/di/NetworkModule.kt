@@ -1,5 +1,6 @@
 package com.githubclient.app.di
 
+import com.githubclient.app.data.auth.SessionManager
 import com.githubclient.app.data.auth.TokenManager
 import com.githubclient.app.data.remote.GitHubApi
 import dagger.Module
@@ -14,6 +15,9 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import com.githubclient.app.BuildConfig
@@ -31,7 +35,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(tokenManager: TokenManager): OkHttpClient {
+    fun provideOkHttpClient(
+        tokenManager: TokenManager,
+        sessionManager: SessionManager
+    ): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BASIC
@@ -74,9 +81,40 @@ object NetworkModule {
                 }
                 chain.proceed(newRequest)
             }
+            // 识别 token 有效期：
+            // 1) 读取响应头 github-authentication-token-expiration，记录到期时间；
+            // 2) 收到 401 且该请求用的就是「当前活跃 token」时，交给 SessionManager 自动登出。
+            //    只在 token 匹配时登出，避免「添加其它账号 / 校验某个 token」误伤当前登录态。
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val response = chain.proceed(request)
+                if (request.url.host == "api.github.com") {
+                    response.header("github-authentication-token-expiration")
+                        ?.let { raw -> parseGithubExpiry(raw) }
+                        ?.let { epoch -> tokenManager.updateTokenExpiry(epoch) }
+
+                    if (response.code == 401) {
+                        val activeToken = tokenManager.getToken()
+                        val requestAuth = request.header("Authorization")
+                        val isActiveTokenRequest =
+                            !activeToken.isNullOrBlank() && requestAuth == "Bearer $activeToken"
+                        if (isActiveTokenRequest) {
+                            sessionManager.onTokenExpired()
+                        }
+                    }
+                }
+                response
+            }
             .addInterceptor(logging)
             .build()
     }
+
+    /** 解析形如 `2026-09-19 03:23:14 UTC` 的到期时间。 */
+    private fun parseGithubExpiry(raw: String): Long? = runCatching {
+        val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", Locale.US)
+        format.timeZone = TimeZone.getTimeZone("UTC")
+        format.parse(raw.trim())?.time
+    }.getOrNull()
 
     @Provides
     @Singleton
