@@ -17,7 +17,9 @@ data class GitHubAccount(
     val login: String,
     val token: String,
     val avatarUrl: String? = null,
-    val nickname: String? = null
+    val nickname: String? = null,
+    /** token 到期时间（epoch 毫秒）。null 表示未知或永不过期。 */
+    val tokenExpiresAt: Long? = null
 )
 
 @Singleton
@@ -129,7 +131,7 @@ class TokenManager @Inject constructor(
     fun saveToken(token: String) {
         val account = getActiveAccount()
         if (account != null) {
-            saveAccount(account.copy(token = token))
+            saveAccount(account.copy(token = token, tokenExpiresAt = null))
         } else {
             addAccount(token = token, login = "default")
         }
@@ -151,6 +153,32 @@ class TokenManager @Inject constructor(
             token.startsWith("gho_") -> "OAuth Token"
             else -> "Token"
         }
+    }
+
+    // ---- token 有效期识别 ----
+
+    /**
+     * 记录当前活跃 token 的到期时间（epoch 毫秒）。
+     * 由网络层从 GitHub 响应头 `github-authentication-token-expiration` 解析后写入。
+     */
+    fun updateTokenExpiry(epochMillis: Long?) {
+        val login = getActiveLogin() ?: return
+        val list = accountsFromJson()
+        val idx = list.indexOfFirst { it.login == login }
+        if (idx >= 0) {
+            if (list[idx].tokenExpiresAt == epochMillis) return
+            list[idx] = list[idx].copy(tokenExpiresAt = epochMillis)
+            saveAccounts(list)
+        }
+    }
+
+    /** 当前活跃 token 的到期时间；null 表示未知。 */
+    fun getTokenExpiry(): Long? = getActiveAccount()?.tokenExpiresAt
+
+    /** 当前活跃 token 是否已过期（仅在已知到期时间时判定）。 */
+    fun isActiveTokenExpired(now: Long = System.currentTimeMillis()): Boolean {
+        val exp = getActiveAccount()?.tokenExpiresAt ?: return false
+        return exp <= now
     }
 
     fun clearToken() {
