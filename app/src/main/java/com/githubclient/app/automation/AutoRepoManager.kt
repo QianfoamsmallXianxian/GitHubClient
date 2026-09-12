@@ -34,7 +34,6 @@ class AutoRepoManager @Inject constructor(
     private val _state = MutableStateFlow<AutoRepoState>(AutoRepoState.Idle)
     val state: StateFlow<AutoRepoState> = _state
 
-    private val notifyEvery = 20
 
     fun previewScan(path: String): LocalProjectScanner.ScanResult = scanner.scanDirectory(path)
 
@@ -90,9 +89,7 @@ class AutoRepoManager @Inject constructor(
                 branch = null
             ) { done, t, _ ->
                 _state.value = AutoRepoState.Uploading(done, t)
-                if (done % notifyEvery == 0 || done == t) {
-                    UploadForegroundService.update(appContext, "上传 $done/$t", done, t)
-                }
+                UploadForegroundService.update(appContext, "上传 $done/$t", done, t)
             }
 
             _state.value = AutoRepoState.Success(repo.fullName, uploaded, emptyList())
