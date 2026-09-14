@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -41,7 +42,7 @@ import javax.inject.Singleton
  *     因为 Contents API 对目录返回 JSON 数组，反序列化会抛 SerializationException。
  *  3. deleteFile() 遇 409 自动重取 sha 重试。
  *  4. 删除路径接入 callWithRetry，403 次级限流自动退避。
- *  5. getFileSha 只把 404 当 null，其他错误向上抛。
+ *  5. getFileSha 只把 404 当 null，其他错误向上抛；对目录（反序列化异常）也返回 null。
  *  6. 批量节流 350ms。
  */
 @Singleton
@@ -120,7 +121,11 @@ class GitHubWriteRepository @Inject constructor(
 
     // ==================== 读取 ====================
 
-    /** 404 -> null；其他错误 -> 抛出。 */
+    /**
+     * 404 -> null；其他 HTTP 错误 -> 抛出。
+     * 目录 -> null：Contents API 对目录返回 JSON 数组，反序列化成 RepoContent 会抛
+     * SerializationException，这里统一视为「不是文件」，交给调用方按目录处理。
+     */
     suspend fun getFileSha(
         owner: String,
         repo: String,
@@ -132,6 +137,8 @@ class GitHubWriteRepository @Inject constructor(
         } catch (e: HttpException) {
             if (e.code() == 404) null
             else throw IllegalStateException("[getFileSha:$path] HTTP ${e.code()}: ${e.readErrorBody()}", e)
+        } catch (e: SerializationException) {
+            null
         }
     }
 
