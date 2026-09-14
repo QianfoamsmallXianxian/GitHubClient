@@ -72,6 +72,9 @@ class GitHubRepository @Inject constructor(
     suspend fun getWorkflowJobs(owner: String, name: String, runId: Long): WorkflowJobsResponse =
         api.getWorkflowJobs(owner, name, runId)
 
+    suspend fun getRunArtifacts(owner: String, name: String, runId: Long) =
+        api.getRunArtifacts(owner, name, runId)
+
     suspend fun dispatchWorkflow(owner: String, name: String, workflowId: Long, ref: String, inputs: Map<String, String>? = null) =
         api.dispatchWorkflow(owner, name, workflowId, com.githubclient.app.data.remote.DispatchWorkflowRequest(ref, inputs))
 
