@@ -83,6 +83,8 @@ data class WorkflowRun(
     @SerialName("head_sha") val headSha: String? = null,
     @SerialName("head_branch") val headBranch: String? = null,
     @SerialName("run_number") val runNumber: Int? = null,
+    @SerialName("run_attempt") val runAttempt: Int? = null,
+    @SerialName("run_started_at") val runStartedAt: String? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("html_url") val htmlUrl: String? = null,
@@ -174,4 +176,19 @@ data class ReleaseAsset(
     val size: Long = 0,
     @SerialName("download_count") val downloadCount: Int = 0,
     @SerialName("content_type") val contentType: String? = null
+)
+
+@Serializable
+data class Artifact(
+    val id: Long,
+    val name: String,
+    @SerialName("size_in_bytes") val sizeInBytes: Long = 0,
+    @SerialName("expired") val expired: Boolean = false,
+    @SerialName("created_at") val createdAt: String? = null
+)
+
+@Serializable
+data class ArtifactsResponse(
+    @SerialName("total_count") val totalCount: Int,
+    val artifacts: List<Artifact> = emptyList()
 )
