@@ -102,13 +102,12 @@ fun RepoScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectionMode by remember { mutableStateOf(false) }
     var copyHint by remember { mutableStateOf<String?>(null) }
-    var storageGranted by remember { mutableStateOf(PermissionHelper.hasAllFilesAccess()) }
 
     // 从系统“所有文件访问权限”页返回后刷新状态
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                storageGranted = PermissionHelper.hasAllFilesAccess()
+                // no-op
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -230,14 +229,6 @@ fun RepoScreen(
                 item(key = "header") {
                     RepoHeader(
                         repo = r,
-                        storageGranted = storageGranted,
-                        onRequestStorage = {
-                            if (PermissionHelper.hasAllFilesAccess()) {
-                                storageGranted = true
-                            } else {
-                                PermissionHelper.requestAllFilesAccess(context)
-                            }
-                        },
                         onOpenCommits = {
                             viewModel.loadCommits(owner, name)
                             showCommitsDialog = true
@@ -377,8 +368,6 @@ private fun copyToClipboard(context: Context, text: String) {
 @OptIn(ExperimentalLayoutApi::class)
 private fun RepoHeader(
     repo: Repository,
-    storageGranted: Boolean,
-    onRequestStorage: () -> Unit,
     onOpenCommits: () -> Unit,
     onOpenIssues: () -> Unit,
     onOpenPulls: () -> Unit,
@@ -429,14 +418,6 @@ private fun RepoHeader(
                 Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("搜索") }
                 Button(onClick = onToggleSelection) { Icon(Icons.Default.DeleteSweep, contentDescription = null); Text("批量删") }
             }
-            // 第三行：存储授权（按需）
-            Button(
-                onClick = onRequestStorage,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-            ) {
-                Text(if (storageGranted) "存储空间已授权" else "授权存储空间")
-            }
-        }
     }
 }
 
