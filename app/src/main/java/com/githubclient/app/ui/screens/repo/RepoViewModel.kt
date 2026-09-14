@@ -48,6 +48,9 @@ class RepoViewModel @Inject constructor(
     val selectedPaths: StateFlow<Set<String>> = _selectedPaths
 
     private val _isDeleting = MutableStateFlow(false)
+
+    private val _latestRun = MutableStateFlow<com.githubclient.app.data.model.WorkflowRun?>(null)
+    val latestRun: StateFlow<com.githubclient.app.data.model.WorkflowRun?> = _latestRun
     val isDeleting: StateFlow<Boolean> = _isDeleting
 
     private val _deleteProgress = MutableStateFlow<Pair<Int, Int>?>(null)
@@ -207,6 +210,10 @@ class RepoViewModel @Inject constructor(
             _isLoading.value = true
             try {
                 _repo.value = repository.getRepo(owner, name)
+                runCatching {
+                    val runs = repository.getWorkflowRuns(owner, name)
+                    _latestRun.value = runs.workflowRuns.firstOrNull()
+                }
             } catch (e: Exception) {
                 _repo.value = null
             } finally {
