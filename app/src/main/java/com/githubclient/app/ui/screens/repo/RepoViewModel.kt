@@ -50,6 +50,9 @@ class RepoViewModel @Inject constructor(
     private val _isDeleting = MutableStateFlow(false)
     val isDeleting: StateFlow<Boolean> = _isDeleting
 
+    private val _deleteProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val deleteProgress: StateFlow<Pair<Int, Int>?> = _deleteProgress
+
     private var allContents: List<RepoContent> = emptyList()
     private var currentOwner: String = ""
     private var currentName: String = ""
@@ -100,6 +103,7 @@ class RepoViewModel @Inject constructor(
         viewModelScope.launch {
             _isDeleting.value = true
             _message.value = null
+            _deleteProgress.value = null
             try {
                 val sorted = paths.sorted()
                 val effective = sorted.filter { p ->
@@ -109,12 +113,17 @@ class RepoViewModel @Inject constructor(
                 val failed = mutableListOf<String>()
                 for (p in effective) {
                     val item = allContents.firstOrNull { it.path == p }
-                        ?: RepoContent(type = "file", name = p.substringAfterLast('/'), path = p, sha = "")
+                        ?: RepoContent(
+                            type = "file",
+                            name = p.substringAfterLast('/'),
+                            path = p,
+                            sha = ""
+                        )
                     try {
                         deleteRecursive(currentOwner, currentName, item)
                         ok++
                     } catch (e: Exception) {
-                        failed.add(p)
+                        failed.add("$p（${e.message}）")
                     }
                 }
                 _message.value = when {
@@ -128,6 +137,7 @@ class RepoViewModel @Inject constructor(
                 _message.value = "删除失败: ${e.message}"
             } finally {
                 _isDeleting.value = false
+                _deleteProgress.value = null
             }
         }
     }
@@ -137,6 +147,7 @@ class RepoViewModel @Inject constructor(
         viewModelScope.launch {
             _isDeleting.value = true
             _message.value = null
+            _deleteProgress.value = null
             try {
                 deleteRecursive(currentOwner, currentName, item)
                 _message.value = "已删除 ${item.name}"
@@ -145,23 +156,35 @@ class RepoViewModel @Inject constructor(
                 _message.value = "删除失败: ${e.message}"
             } finally {
                 _isDeleting.value = false
+                _deleteProgress.value = null
             }
         }
     }
 
-    /** 递归删除；文件直接使用已知 sha，避免每个文件多一次 GET */
+    /**
+     * 递归删除：
+     * - 目录：直接走 Git Data API 一次提交移除整棵子树（deleteDirectory 快路径），
+     *   避免逐文件递归 + 1s 节流导致的长时间“删除中”。
+     * - 文件：使用列表接口已返回的 sha 直接删除，省掉一次 GET。
+     */
     private suspend fun deleteRecursive(owner: String, name: String, item: RepoContent) {
         if (item.type == "dir") {
-            val children = repository.getContents(owner, name, item.path)
-            for (child in children) {
-                deleteRecursive(owner, name, child)
-            }
+            writeRepository.deleteDirectory(
+                owner = owner,
+                repo = name,
+                dirPath = item.path,
+                branch = null,
+                onProgress = { done, total, _ ->
+                    _deleteProgress.value = done to total
+                }
+            )
         } else {
             writeRepository.deleteFile(
                 owner = owner,
                 repo = name,
                 path = item.path,
-                sha = item.sha.ifBlank { null }
+                sha = item.sha.ifBlank { null },
+                minIntervalMs = 350L
             )
         }
     }
