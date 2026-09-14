@@ -3,8 +3,6 @@ package com.githubclient.app.ui.screens.repo
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -94,7 +92,6 @@ fun RepoScreen(
     val selectedPaths by viewModel.selectedPaths.collectAsState()
     val isDeleting by viewModel.isDeleting.collectAsState()
     val deleteProgress by viewModel.deleteProgress.collectAsState()
-    val latestRun by viewModel.latestRun.collectAsState()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var currentPath by remember { mutableStateOf("") }
@@ -106,15 +103,6 @@ fun RepoScreen(
     var selectionMode by remember { mutableStateOf(false) }
     var copyHint by remember { mutableStateOf<String?>(null) }
 
-    // 从系统“所有文件访问权限”页返回后刷新状态
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     val allSelected = contents.isNotEmpty() && selectedPaths.containsAll(contents.map { it.path })
 
@@ -162,15 +150,6 @@ fun RepoScreen(
                         Button(onClick = onOpenActions, modifier = Modifier.padding(end = 4.dp)) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null)
                             Text("Actions")
-                        }
-                        latestRun?.htmlUrl?.let { url ->
-                            IconButton(onClick = {
-                                context.startActivity(
-                                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                                )
-                            }) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "打开构建", tint = MaterialTheme.colorScheme.primary)
-                            }
                         }
                         IconButton(onClick = { showDeleteRepoDialog = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "删除仓库", tint = MaterialTheme.colorScheme.error)
@@ -240,7 +219,62 @@ fun RepoScreen(
                 item(key = "header") {
                     RepoHeader(
                         repo = r,
-                        latestRun = latestRun,
+                        onOpenCommits = {
+                            viewModel.loadCommits(owner, name)
+                            showCommitsDialog = true
+                        },
+                        onOpenIssues = onOpenIssues,
+                        onOpenPulls = onOpenPulls,
+                        onCopyLink = {
+                            copyToClipboard(context, "https://github.com/$owner/$name")
+                            copyHint = "已复制链接: https://github.com/$owner/$name"
+                        },
+                        onOpenReleases = onOpenReleases,
+                        onToggleSearch = {
+                            showSearchBar = !showSearchBar
+                            if (!showSearchBar) {
+                                searchQuery = ""
+                                viewModel.filterContents("")
+                            }
+                        },
+                        onToggleSelection = {
+                            selectionMode = !selectionMode
+                            viewModel.clearSelection()
+                        }
+                    )
+                }
+            }
+            if (showSearchBar) {
+                item(key = "search") {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            viewModel.filterContents(it)
+                        },
+                        label = { Text("搜索文件") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    )
+                }
+            }
+            item(key = "files_header") { Text("文件", modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), style = MaterialTheme.typography.titleSmall) }
+            if (isLoading && contents.isEmpty()) {
+                item(key = "loading") { LoadingState() }
+            } else if (contents.isEmpty()) {
+                item(key = "empty") { EmptyState("仓库为空或无法访问") }
+            } else {
+                items(contents, key = { it.sha }) { item ->
+                    ContentRow(
+                        item = item,
+                        selectionMode = selectionMode,
+                        selected = selectedPaths.contains(item.path),
+                        onLongClick = {
+                            // 长按进入选择模式，仅选中当前项（不自动全选）
+                            selectionMode = true
+                            if (!selectedPaths.contains(item.path)) viewModel.toggleSelect(item)
+                        },
                         onClick = {
                             if (selectionMode) {
                                 viewModel.toggleSelect(item)
@@ -330,8 +364,7 @@ private fun RepoHeader(
     onCopyLink: () -> Unit,
     onOpenReleases: () -> Unit,
     onToggleSearch: () -> Unit,
-    onToggleSelection: () -> Unit,
-    latestRun: com.githubclient.app.data.model.WorkflowRun?,
+    onToggleSelection: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -342,16 +375,6 @@ private fun RepoHeader(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Text(repo.name, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(start = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                latestRun?.let { run ->
-                    val ok = run.conclusion == "success"
-                    val bad = run.conclusion != null && !ok
-                    Text(
-                        if (ok) "✔ 构建通过" else if (bad) "✘ 构建失败" else "● 构建中",
-                        color = if (ok) MaterialTheme.colorScheme.secondary else if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
             }
             repo.description?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp), maxLines = 3, overflow = TextOverflow.Ellipsis)
