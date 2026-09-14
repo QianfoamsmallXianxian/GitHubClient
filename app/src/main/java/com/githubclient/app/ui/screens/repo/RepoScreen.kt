@@ -86,6 +86,7 @@ fun RepoScreen(
     val isCommitsLoading by viewModel.isCommitsLoading.collectAsState()
     val selectedPaths by viewModel.selectedPaths.collectAsState()
     val isDeleting by viewModel.isDeleting.collectAsState()
+    val deleteProgress by viewModel.deleteProgress.collectAsState()
     val context = LocalContext.current
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
@@ -163,7 +164,12 @@ fun RepoScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = null)
-                        Text(if (isDeleting) "删除中..." else "删除选中 (${selectedPaths.size})")
+                        Text(
+                            if (isDeleting) {
+                                val p = deleteProgress
+                                if (p != null && p.second > 0) "删除中 ${p.first}/${p.second}..." else "删除中..."
+                            } else "删除选中 (${selectedPaths.size})"
+                        )
                     }
                     Button(onClick = {
                         if (allSelected) viewModel.clearSelection() else viewModel.selectAll()
