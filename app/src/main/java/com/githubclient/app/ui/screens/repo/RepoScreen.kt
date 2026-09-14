@@ -352,6 +352,7 @@ private fun RepoHeader(
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
+            }
             repo.description?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp), maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
