@@ -22,6 +22,9 @@ class ToolchainViewModel @Inject constructor(
     private val _isDetecting = MutableStateFlow(false)
     val isDetecting: StateFlow<Boolean> = _isDetecting
 
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message
+
     init { detect() }
 
     fun detect() {
@@ -35,4 +38,6 @@ class ToolchainViewModel @Inject constructor(
             }
         }
     }
+
+    fun clearMessage() { _message.value = null }
 }
