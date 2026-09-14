@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
@@ -13,6 +15,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import com.githubclient.app.data.auth.OAuthManager
 import com.githubclient.app.navigation.AppNavHost
+import com.githubclient.app.util.PermissionHelper
 import com.githubclient.app.ui.theme.GitHubClientTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -34,11 +37,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         handleIntent(intent)
+        ensureStorageAccess()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+        ensureStorageAccess()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -71,6 +76,23 @@ class MainActivity : ComponentActivity() {
                     android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
+        }
+    }
+
+    /** 启动即检查所有文件访问权限，未授权则跳设置页 */
+    private fun ensureStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            runCatching {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                )
+            }.onFailure {
+                runCatching {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                }
+            }
         }
     }
 
