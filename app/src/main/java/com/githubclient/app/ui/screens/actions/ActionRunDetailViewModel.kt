@@ -1,5 +1,10 @@
 package com.githubclient.app.ui.screens.actions
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.model.Artifact
@@ -7,6 +12,7 @@ import com.githubclient.app.data.model.WorkflowJob
 import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -22,11 +28,13 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.time.Instant
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
 
-/** 构建进度，供界面展示 */
 data class BuildProgress(
     val percent: Int,
     val totalSteps: Int,
@@ -34,11 +42,18 @@ data class BuildProgress(
     val etaText: String
 )
 
+data class DownloadState(
+    val artifactName: String,
+    val progress: Int,
+    val status: String
+)
+
 private data class RunKey(val owner: String, val name: String, val runId: Long)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ActionRunDetailViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val okHttpClient: OkHttpClient,
     private val repository: GitHubRepository
 ) : ViewModel() {
@@ -54,12 +69,14 @@ class ActionRunDetailViewModel @Inject constructor(
     private val _runDetail = MutableStateFlow<WorkflowRun?>(null)
     val runDetail: StateFlow<WorkflowRun?> = _runDetail
 
-    /** 逐 job 列表，用于界面里像 GitHub 原生那样一行行展示 */
     private val _jobs = MutableStateFlow<List<WorkflowJob>>(emptyList())
     val jobs: StateFlow<List<WorkflowJob>> = _jobs
 
     private val _artifacts = MutableStateFlow<List<Artifact>>(emptyList())
     val artifacts: StateFlow<List<Artifact>> = _artifacts
+
+    private val _downloadState = MutableStateFlow<DownloadState?>(null)
+    val downloadState: StateFlow<DownloadState?> = _downloadState
 
     val progress: StateFlow<BuildProgress?> = runKey
         .filterNotNull()
@@ -164,6 +181,82 @@ class ActionRunDetailViewModel @Inject constructor(
             }
             if (builder.isBlank()) "日志压缩包内没有可读文件" else builder.toString()
         }.getOrElse { "日志解析失败: ${it.message}" }
+    }
+
+    /**
+     * 下载 artifact 到手机公共 Download 目录。
+     * API 29+ 走 MediaStore，不需要任何存储权限；
+     * 28 及以下退回到 app 外部私有目录。
+     */
+    fun downloadArtifact(owner: String, repo: String, artifact: Artifact) {
+        if (_downloadState.value?.status == "downloading") return
+        viewModelScope.launch {
+            _downloadState.value = DownloadState(artifact.name, 0, "downloading")
+            try {
+                withContext(Dispatchers.IO) {
+                    val url = "https://api.github.com/repos/$owner/$repo/actions/artifacts/${artifact.id}/zip"
+                    val req = Request.Builder().url(url).build()
+                    okHttpClient.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) error("HTTP ${resp.code}")
+                        val body = resp.body ?: error("响应为空")
+                        val total = body.contentLength()
+                        val fileName = "${artifact.name}.zip"
+                        writeArtifact(fileName, body.byteStream(), total) { done ->
+                            val p = if (total > 0) (done * 100 / total).toInt() else 0
+                            _downloadState.value = DownloadState(artifact.name, p, "downloading")
+                        }
+                    }
+                }
+                _downloadState.value = DownloadState(artifact.name, 100, "done")
+            } catch (e: Exception) {
+                _downloadState.value = DownloadState(artifact.name, 0, "error: ${e.message}")
+            }
+        }
+    }
+
+    private fun writeArtifact(
+        fileName: String,
+        input: InputStream,
+        total: Long,
+        onProgress: (Long) -> Unit
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/zip")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val resolver = appContext.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: error("无法在 Download 目录创建文件")
+            resolver.openOutputStream(uri)?.use { out ->
+                copyTo(input, out, onProgress)
+            } ?: error("无法打开输出流")
+        } else {
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, fileName)
+            FileOutputStream(file).use { out ->
+                copyTo(input, out, onProgress)
+            }
+        }
+    }
+
+    private fun copyTo(input: InputStream, out: java.io.OutputStream, onProgress: (Long) -> Unit) {
+        val buf = ByteArray(8192)
+        var done = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n <= 0) break
+            out.write(buf, 0, n)
+            done += n
+            onProgress(done)
+        }
+        out.flush()
+    }
+
+    fun clearDownloadState() {
+        _downloadState.value = null
     }
 
     private fun calculateProgress(
