@@ -397,7 +397,7 @@ private fun RepoHeader(
     onCopyLink: () -> Unit,
     onOpenReleases: () -> Unit,
     onToggleSearch: () -> Unit,
-    onToggleSelection: () -> Unit
+    onToggleSelection: () -> Unit,
     latestRun: com.githubclient.app.data.model.WorkflowRun?,
 ) {
     Card(
