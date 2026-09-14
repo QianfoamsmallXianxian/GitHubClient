@@ -48,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,10 +61,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.githubclient.app.data.model.RepoContent
 import com.githubclient.app.data.model.Repository
 import com.githubclient.app.ui.components.EmptyState
 import com.githubclient.app.ui.components.LoadingState
+import com.githubclient.app.util.PermissionHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +93,7 @@ fun RepoScreen(
     val isDeleting by viewModel.isDeleting.collectAsState()
     val deleteProgress by viewModel.deleteProgress.collectAsState()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var currentPath by remember { mutableStateOf("") }
     var selectedFile by remember { mutableStateOf<RepoContent?>(null) }
     var showDeleteRepoDialog by remember { mutableStateOf(false) }
@@ -96,6 +102,18 @@ fun RepoScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectionMode by remember { mutableStateOf(false) }
     var copyHint by remember { mutableStateOf<String?>(null) }
+    var storageGranted by remember { mutableStateOf(PermissionHelper.hasAllFilesAccess()) }
+
+    // 从系统“所有文件访问权限”页返回后刷新状态
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                storageGranted = PermissionHelper.hasAllFilesAccess()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val allSelected = contents.isNotEmpty() && selectedPaths.containsAll(contents.map { it.path })
 
@@ -212,6 +230,14 @@ fun RepoScreen(
                 item(key = "header") {
                     RepoHeader(
                         repo = r,
+                        storageGranted = storageGranted,
+                        onRequestStorage = {
+                            if (PermissionHelper.hasAllFilesAccess()) {
+                                storageGranted = true
+                            } else {
+                                PermissionHelper.requestAllFilesAccess(context)
+                            }
+                        },
                         onOpenCommits = {
                             viewModel.loadCommits(owner, name)
                             showCommitsDialog = true
@@ -263,7 +289,6 @@ fun RepoScreen(
                         item = item,
                         selectionMode = selectionMode,
                         selected = selectedPaths.contains(item.path),
-                        onDelete = { viewModel.deleteSingle(item) },
                         onLongClick = {
                             // 长按进入选择模式，仅选中当前项（不自动全选）
                             selectionMode = true
@@ -352,6 +377,8 @@ private fun copyToClipboard(context: Context, text: String) {
 @OptIn(ExperimentalLayoutApi::class)
 private fun RepoHeader(
     repo: Repository,
+    storageGranted: Boolean,
+    onRequestStorage: () -> Unit,
     onOpenCommits: () -> Unit,
     onOpenIssues: () -> Unit,
     onOpenPulls: () -> Unit,
@@ -402,6 +429,13 @@ private fun RepoHeader(
                 Button(onClick = onToggleSearch) { Icon(Icons.Default.Search, contentDescription = null); Text("搜索") }
                 Button(onClick = onToggleSelection) { Icon(Icons.Default.DeleteSweep, contentDescription = null); Text("批量删") }
             }
+            // 第三行：存储授权（按需）
+            Button(
+                onClick = onRequestStorage,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) {
+                Text(if (storageGranted) "存储空间已授权" else "授权存储空间")
+            }
         }
     }
 }
@@ -421,8 +455,7 @@ private fun ContentRow(
     selectionMode: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onDelete: () -> Unit
+    onLongClick: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 16.dp, vertical = 10.dp),
@@ -436,10 +469,5 @@ private fun ContentRow(
         Icon(icon, contentDescription = null, tint = if (item.type == "dir") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
         Text(item.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (item.type == "file") item.size?.let { Text("${it}B", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (!selectionMode) {
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "删除", tint = MaterialTheme.colorScheme.error)
-            }
-        }
     }
 }
