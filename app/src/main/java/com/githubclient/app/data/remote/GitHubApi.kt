@@ -1,5 +1,6 @@
 package com.githubclient.app.data.remote
 
+import com.githubclient.app.data.model.ArtifactsResponse
 import com.githubclient.app.data.model.Commit
 import com.githubclient.app.data.model.Issue
 import com.githubclient.app.data.model.PullRequest
@@ -132,6 +133,14 @@ interface GitHubApi {
         @Path("repo") repo: String,
         @Path("run_id") runId: Long
     ): WorkflowJobsResponse
+
+    @GET("repos/{owner}/{repo}/actions/runs/{run_id}/artifacts")
+    suspend fun getRunArtifacts(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("run_id") runId: Long,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): ArtifactsResponse
 
     @GET("repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs")
     suspend fun getWorkflowRunsByWorkflow(
