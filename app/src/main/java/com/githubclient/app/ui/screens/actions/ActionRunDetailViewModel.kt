@@ -2,15 +2,21 @@ package com.githubclient.app.ui.screens.actions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.githubclient.app.data.model.Artifact
 import com.githubclient.app.data.model.WorkflowJob
+import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.repository.GitHubRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -28,31 +34,91 @@ data class BuildProgress(
     val etaText: String
 )
 
+private data class RunKey(val owner: String, val name: String, val runId: Long)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class ActionRunDetailViewModel @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val repository: GitHubRepository
 ) : ViewModel() {
+
+    private val runKey = MutableStateFlow<RunKey?>(null)
+
     private val _log = MutableStateFlow<String?>(null)
     val log: StateFlow<String?> = _log
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    private val _progress = MutableStateFlow<BuildProgress?>(null)
-    val progress: StateFlow<BuildProgress?> = _progress
+    private val _runDetail = MutableStateFlow<WorkflowRun?>(null)
+    val runDetail: StateFlow<WorkflowRun?> = _runDetail
 
-    private var pollJob: Job? = null
+    /** 逐 job 列表，用于界面里像 GitHub 原生那样一行行展示 */
+    private val _jobs = MutableStateFlow<List<WorkflowJob>>(emptyList())
+    val jobs: StateFlow<List<WorkflowJob>> = _jobs
+
+    private val _artifacts = MutableStateFlow<List<Artifact>>(emptyList())
+    val artifacts: StateFlow<List<Artifact>> = _artifacts
+
+    val progress: StateFlow<BuildProgress?> = runKey
+        .filterNotNull()
+        .flatMapLatest { key ->
+            flow {
+                while (true) {
+                    val run = runCatching {
+                        repository.getWorkflowRun(key.owner, key.name, key.runId)
+                    }.getOrNull()
+
+                    if (run == null) {
+                        delay(5_000L)
+                        continue
+                    }
+
+                    _runDetail.value = run
+
+                    val jobList = runCatching {
+                        repository.getWorkflowJobs(key.owner, key.name, key.runId)
+                    }.getOrNull()?.jobs ?: emptyList()
+                    _jobs.value = jobList
+
+                    emit(calculateProgress(run.status, run.conclusion, run.createdAt, jobList))
+
+                    if (run.status == "completed" && _artifacts.value.isEmpty()) {
+                        runCatching {
+                            repository.getRunArtifacts(key.owner, key.name, key.runId).artifacts
+                        }.onSuccess { _artifacts.value = it }
+                    }
+
+                    if (run.status == "completed") break
+                    delay(intervalFor(run.status))
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
     fun load(owner: String, name: String, runId: Long) {
-        pollJob?.cancel()
+        val newKey = RunKey(owner, name, runId)
+        if (runKey.value == newKey) return
+        runKey.value = newKey
+        _runDetail.value = null
+        _jobs.value = emptyList()
+        _artifacts.value = emptyList()
+
         viewModelScope.launch {
             _isLoading.value = true
-            fetchLog(owner, name, runId)
-            fetchProgress(owner, name, runId)
-            _isLoading.value = false
-            startPolling(owner, name, runId)
+            try {
+                fetchLog(owner, name, runId)
+            } finally {
+                _isLoading.value = false
+            }
         }
+    }
+
+    private fun intervalFor(status: String): Long = when (status) {
+        "queued", "requested", "waiting" -> 15_000L
+        "in_progress"                    -> 4_000L
+        else                             -> 6_000L
     }
 
     private suspend fun fetchLog(owner: String, name: String, runId: Long) {
@@ -61,12 +127,8 @@ class ActionRunDetailViewModel @Inject constructor(
             _log.value = withContext(Dispatchers.IO) {
                 val request = Request.Builder().url(url).build()
                 okHttpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        "日志获取失败 HTTP ${response.code}"
-                    } else {
-                        // GitHub 的 logs 接口返回 zip，直接当文本会是乱码
-                        extractLogText(response.body?.bytes())
-                    }
+                    if (!response.isSuccessful) "日志获取失败 HTTP ${response.code}"
+                    else extractLogText(response.body?.bytes())
                 }
             }
         } catch (e: Exception) {
@@ -74,7 +136,6 @@ class ActionRunDetailViewModel @Inject constructor(
         }
     }
 
-    /** 把 zip 里的文本日志拼出来；不是 zip 时按纯文本处理 */
     private fun extractLogText(bytes: ByteArray?): String {
         if (bytes == null || bytes.isEmpty()) return "日志为空"
         val looksLikeZip = bytes.size >= 4 &&
@@ -102,28 +163,7 @@ class ActionRunDetailViewModel @Inject constructor(
                 }
             }
             if (builder.isBlank()) "日志压缩包内没有可读文件" else builder.toString()
-        }.getOrElse {
-            "日志解析失败: ${it.message}"
-        }
-    }
-
-    private suspend fun fetchProgress(owner: String, name: String, runId: Long) {
-        try {
-            val run = repository.getWorkflowRun(owner, name, runId)
-            val jobsResponse = repository.getWorkflowJobs(owner, name, runId)
-            _progress.value = calculateProgress(run.status, run.conclusion, run.createdAt, jobsResponse.jobs)
-        } catch (e: Exception) {
-            _progress.value = null
-        }
-    }
-
-    private fun startPolling(owner: String, name: String, runId: Long) {
-        pollJob = viewModelScope.launch {
-            while (isActive) {
-                delay(5000L)
-                fetchProgress(owner, name, runId)
-            }
-        }
+        }.getOrElse { "日志解析失败: ${it.message}" }
     }
 
     private fun calculateProgress(
@@ -140,7 +180,7 @@ class ActionRunDetailViewModel @Inject constructor(
         val finalStatus = when {
             status == "completed" && conclusion == "success" -> "构建成功"
             status == "completed" && conclusion == "failure" -> "构建失败"
-            status == "queued" -> "排队中"
+            status == "queued"      -> "排队中"
             status == "in_progress" -> "构建中"
             else -> status
         }
@@ -160,7 +200,7 @@ class ActionRunDetailViewModel @Inject constructor(
         val totalEstimated = (elapsed * 100.0 / percent).toLong()
         val remaining = totalEstimated - elapsed
         return when {
-            remaining < 60_000 -> "约 1 分钟内完成"
+            remaining < 60_000    -> "约 1 分钟内完成"
             remaining < 3_600_000 -> "预计还需 ${remaining / 60_000} 分钟"
             else -> "预计还需 ${remaining / 3_600_000} 小时 ${(remaining % 3_600_000) / 60_000} 分钟"
         }
