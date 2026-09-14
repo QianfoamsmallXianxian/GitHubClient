@@ -23,14 +23,15 @@ import javax.inject.Singleton
  *     返回文本里两者会拼在一起，但 isError 只在 exitCode != 0 或 stderr 非空时为 true。
  *  4. 读取线程用 join 前，先关闭流；防止进程已结束但读取线程被 GC 卡住。
  */
+data class TerminalOutput(
+    val text: String,
+    val isError: Boolean = false,
+    val exitCode: Int = 0
+)
+
 @Singleton
 class TerminalExecutor @Inject constructor() {
 
-    data class TerminalOutput(
-        val text: String,
-        val isError: Boolean = false,
-        val exitCode: Int = 0
-    )
 
     private val _history = MutableStateFlow<List<TerminalOutput>>(emptyList())
     val history: StateFlow<List<TerminalOutput>> = _history
