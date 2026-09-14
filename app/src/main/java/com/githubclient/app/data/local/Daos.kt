@@ -33,6 +33,14 @@ interface RepoCacheDao {
 
     @Query("DELETE FROM repo_cache")
     suspend fun clear()
+
+    /**
+     * 新增：删除指定账号下的一条仓库缓存。
+     * 用于「删除远程仓库成功后，同步清掉本地缓存」。
+     * 依赖 RepoCacheEntity 的 fullName 字段（owner/name）。
+     */
+    @Query("DELETE FROM repo_cache WHERE accountLogin = :login AND fullName = :fullName")
+    suspend fun deleteByFullName(login: String, fullName: String)
 }
 
 @Dao

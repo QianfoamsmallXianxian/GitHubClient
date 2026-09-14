@@ -14,6 +14,7 @@ import com.githubclient.app.data.model.WorkflowRun
 import com.githubclient.app.data.model.WorkflowJobsResponse
 import com.githubclient.app.data.model.WorkflowListResponse
 import com.githubclient.app.data.model.WorkflowRunsResponse
+import kotlinx.serialization.json.JsonElement
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -220,7 +221,6 @@ interface GitHubApi {
 
     // ==================== Git Data API ====================
 
-    /** 创建 blob。blob 创建不依赖分支状态，可安全并发。 */
     @POST("repos/{owner}/{repo}/git/blobs")
     suspend fun createBlob(
         @Path("owner") owner: String,
@@ -229,7 +229,6 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     ): BlobResponse
 
-    /** 读取分支引用，拿到最新 commit sha。空仓库会返回 404。 */
     @GET("repos/{owner}/{repo}/git/ref/heads/{branch}")
     suspend fun getRef(
         @Path("owner") owner: String,
@@ -238,7 +237,6 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     ): RefResponse
 
-    /** 读取 commit 详情，用于取它的 tree sha 作为 base_tree。 */
     @GET("repos/{owner}/{repo}/git/commits/{sha}")
     suspend fun getCommitDetail(
         @Path("owner") owner: String,
@@ -247,7 +245,6 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     ): CommitDetailResponse
 
-    /** 用一批 blob 组装一棵 tree。 */
     @POST("repos/{owner}/{repo}/git/trees")
     suspend fun createTree(
         @Path("owner") owner: String,
@@ -256,7 +253,35 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     ): TreeResponse
 
-    /** 创建 commit。 */
+    /**
+     * 新增：递归读取整棵树。
+     * recursive=1 时会一次性返回所有层级的 blob/tree，
+     * 用于「删除目录」时先枚举目录下所有文件。
+     * 注意：返回体里 truncated=true 表示仓库太大被截断，需要分段读取。
+     */
+    @GET("repos/{owner}/{repo}/git/trees/{tree_sha}")
+    suspend fun getTreeRecursive(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("tree_sha") treeSha: String,
+        @Query("recursive") recursive: Int = 1,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): TreeListResponse
+
+    /**
+     * 新增：用原始 JsonElement 提交 tree。
+     * 删除整个目录需要显式发送 "sha": null，
+     * 而 kotlinx.serialization 默认会省略值为 null 的默认字段，
+     * 所以这里走 JsonElement，保证 null 一定被编码进请求体。
+     */
+    @POST("repos/{owner}/{repo}/git/trees")
+    suspend fun createTreeRaw(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body body: JsonElement,
+        @Header("Accept") accept: String = "application/vnd.github+json"
+    ): TreeResponse
+
     @POST("repos/{owner}/{repo}/git/commits")
     suspend fun createCommit(
         @Path("owner") owner: String,
@@ -265,7 +290,6 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     ): CommitShaResponse
 
-    /** 更新已有分支引用。 */
     @PATCH("repos/{owner}/{repo}/git/refs/heads/{branch}")
     suspend fun updateRef(
         @Path("owner") owner: String,
@@ -275,7 +299,6 @@ interface GitHubApi {
         @Header("Accept") accept: String = "application/vnd.github+json"
     )
 
-    /** 空仓库首次提交时创建分支引用。 */
     @POST("repos/{owner}/{repo}/git/refs")
     suspend fun createRef(
         @Path("owner") owner: String,
@@ -395,4 +418,22 @@ data class UpdateRefRequest(
 data class CreateRefRequest(
     val ref: String,
     val sha: String
+)
+
+// ---------- 新增：递归树读取模型 ----------
+
+@kotlinx.serialization.Serializable
+data class TreeEntry(
+    val path: String,
+    val mode: String = "100644",
+    val type: String = "blob",
+    val sha: String = "",
+    val size: Long? = null
+)
+
+@kotlinx.serialization.Serializable
+data class TreeListResponse(
+    val sha: String = "",
+    val tree: List<TreeEntry> = emptyList(),
+    val truncated: Boolean = false
 )

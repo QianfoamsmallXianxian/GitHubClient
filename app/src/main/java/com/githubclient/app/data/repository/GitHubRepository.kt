@@ -81,8 +81,18 @@ class GitHubRepository @Inject constructor(
     suspend fun rerunRun(owner: String, name: String, runId: Long) =
         api.rerunWorkflowRun(owner, name, runId)
 
-    suspend fun deleteRepository(owner: String, name: String) =
+    /**
+     * 删除远程仓库。
+     * accountLogin 可选：传入时会同步清掉本地 repo_cache 中该仓库的记录，
+     * 避免「删完仓库回首页仍看到它挂在列表里」。
+     * 保留默认参数，不传也不会编译失败。
+     */
+    suspend fun deleteRepository(owner: String, name: String, accountLogin: String? = null) {
         api.deleteRepository(owner, name)
+        if (!accountLogin.isNullOrBlank()) {
+            runCatching { repoCacheDao.deleteByFullName(accountLogin, "$owner/$name") }
+        }
+    }
 
     suspend fun deleteRun(owner: String, name: String, runId: Long) =
         api.deleteWorkflowRun(owner, name, runId)
