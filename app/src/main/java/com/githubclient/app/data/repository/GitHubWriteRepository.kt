@@ -54,6 +54,9 @@ class GitHubWriteRepository @Inject constructor(
     private val defaultMinIntervalMs = 1000L
     private val batchMinIntervalMs = 350L
 
+    /** git 空树的固定 SHA-1；GitHub getTree 对空树一律返回 404，需要提前识别 */
+    private val emptyTreeSha = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
     private suspend fun rateGate(minIntervalMs: Long = defaultMinIntervalMs) {
         rateMutex.withLock {
             val now = System.currentTimeMillis()
@@ -281,17 +284,24 @@ class GitHubWriteRepository @Inject constructor(
         } else {
             try {
                 val baseTree = api.getCommitDetail(owner, repo, remoteHeadSha).tree.sha
-                val listing = api.getTreeRecursive(owner, repo, baseTree, 1)
-                if (listing.truncated) {
-                    throw IllegalStateException(
-                        "[resume] 远端文件树过大，GitHub 返回被截断，无法可靠判断哪些文件已上传。" +
-                            "请先减少待上传文件数（例如排除运行时配置目录）后重试"
-                    )
+                // 空树：仓库曾经把文件全删光时，HEAD 提交的 tree 会是空树对象。
+                // GitHub 的 getTree 对空树 SHA 一律返回 404（即使不带 recursive），
+                // 这里直接短路成「远端没有文件」，避免无意义的重试与误导性报错。
+                if (baseTree == emptyTreeSha) {
+                    emptySet()
+                } else {
+                    val listing = api.getTreeRecursive(owner, repo, baseTree, 1)
+                    if (listing.truncated) {
+                        throw IllegalStateException(
+                            "[resume] 远端文件树过大，GitHub 返回被截断，无法可靠判断哪些文件已上传。" +
+                                "请先减少待上传文件数（例如排除运行时配置目录）后重试"
+                        )
+                    }
+                    listing.tree
+                        .filter { it.type == "blob" }
+                        .map { it.path }
+                        .toSet()
                 }
-                listing.tree
-                    .filter { it.type == "blob" }
-                    .map { it.path }
-                    .toSet()
             } catch (e: HttpException) {
                 throw IllegalStateException(
                     "[resume] 读取远端文件树失败 HTTP ${e.code()}：" +
