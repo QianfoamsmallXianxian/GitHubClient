@@ -89,6 +89,7 @@ class PublishManager @Inject constructor(
 
             val files = withContext(Dispatchers.IO) { loadFiles(sourcePath) }
             if (files.isEmpty()) {
+                log("错误: 路径下没有可上传的源码文件 → $sourcePath")
                 _state.value = PublishState.Error("没有找到可上传的源码文件（检查路径）")
                 return
             }
