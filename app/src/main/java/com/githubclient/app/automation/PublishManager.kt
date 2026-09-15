@@ -87,18 +87,13 @@ class PublishManager @Inject constructor(
             val owner = withContext(Dispatchers.IO) { repository.getCurrentUser().login }
             log("账号: $owner")
 
-            val files0 = withContext(Dispatchers.IO) { loadFiles(sourcePath) }
-            if (files0.isEmpty()) {
+            val files = withContext(Dispatchers.IO) { loadFiles(sourcePath) }
+            if (files.isEmpty()) {
                 _state.value = PublishState.Error("没有找到可上传的源码文件（检查路径）")
                 return
             }
-            log("待上传文件: ${files0.size} 个")
+            log("待上传文件: ${files.size} 个")
 
-            // 按源码类型自动生成 workflow；同目录下已有的 .yml/.yaml 会被覆盖
-            val files = ProjectWorkflowGenerator.applyTo(files0)
-            if (files.size != files0.size) {
-                log("已自动生成 workflow: " + ProjectWorkflowGenerator.WORKFLOW_PATH)
-            }
             var attempt = 0
             val maxAttempts = 20
             var uploaded = 0
