@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -95,10 +94,6 @@ fun ActionsScreen(
                             viewModel.clearSelection()
                         }) { Icon(Icons.Default.Close, contentDescription = "取消选择") }
                     } else {
-                        IconButton(
-                            onClick = { viewModel.refresh(owner, name) },
-                            enabled = !isRefreshing
-                        ) { Icon(Icons.Default.Refresh, contentDescription = "刷新") }
                         Button(onClick = onOpenDispatch, modifier = Modifier.padding(end = 8.dp)) { Text("手动触发") }
                     }
                 }
