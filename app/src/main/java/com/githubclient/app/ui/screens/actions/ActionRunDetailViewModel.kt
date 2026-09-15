@@ -1,10 +1,11 @@
 package com.githubclient.app.ui.screens.actions
 
-import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
+import android.provider.Settings
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.githubclient.app.data.model.Artifact
@@ -45,7 +46,9 @@ data class BuildProgress(
 data class DownloadState(
     val artifactName: String,
     val progress: Int,
-    val status: String
+    val status: String,
+    /** 解压出来的 APK 绝对路径；未就绪时为 null */
+    val apkPath: String? = null
 )
 
 private data class RunKey(val owner: String, val name: String, val runId: Long)
@@ -121,6 +124,7 @@ class ActionRunDetailViewModel @Inject constructor(
         _runDetail.value = null
         _jobs.value = emptyList()
         _artifacts.value = emptyList()
+        _downloadState.value = null
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -184,75 +188,105 @@ class ActionRunDetailViewModel @Inject constructor(
     }
 
     /**
-     * 下载 artifact 到手机公共 Download 目录。
-     * API 29+ 走 MediaStore，不需要任何存储权限；
-     * 28 及以下退回到 app 外部私有目录。
+     * 下载 artifact（GitHub 返回 zip），如果里面有 .apk 就顺带解压出来，
+     * 存到 app 私有外部目录，供 FileProvider 交给系统安装器。
      */
     fun downloadArtifact(owner: String, repo: String, artifact: Artifact) {
-        if (_downloadState.value?.status == "downloading") return
+        val cur = _downloadState.value
+        if (cur?.status == "downloading" && cur.artifactName == artifact.name) return
         viewModelScope.launch {
             _downloadState.value = DownloadState(artifact.name, 0, "downloading")
             try {
-                withContext(Dispatchers.IO) {
+                val apkPath = withContext(Dispatchers.IO) {
                     val url = "https://api.github.com/repos/$owner/$repo/actions/artifacts/${artifact.id}/zip"
                     val req = Request.Builder().url(url).build()
                     okHttpClient.newCall(req).execute().use { resp ->
                         if (!resp.isSuccessful) error("HTTP ${resp.code}")
                         val body = resp.body ?: error("响应为空")
                         val total = body.contentLength()
-                        val fileName = "${artifact.name}.zip"
-                        writeArtifact(fileName, body.byteStream(), total) { done ->
+                        val dir = File(appContext.getExternalFilesDir(null), "apk").apply { mkdirs() }
+                        extractApkFromZip(body.byteStream(), dir, total) { done ->
                             val p = if (total > 0) (done * 100 / total).toInt() else 0
                             _downloadState.value = DownloadState(artifact.name, p, "downloading")
                         }
                     }
                 }
-                _downloadState.value = DownloadState(artifact.name, 100, "done")
+                _downloadState.value = DownloadState(artifact.name, 100, "done", apkPath)
             } catch (e: Exception) {
                 _downloadState.value = DownloadState(artifact.name, 0, "error: ${e.message}")
             }
         }
     }
 
-    private fun writeArtifact(
-        fileName: String,
+    /** 从 zip 流里找出第一个 .apk，写到 dir，返回其绝对路径 */
+    private fun extractApkFromZip(
         input: InputStream,
+        dir: File,
         total: Long,
         onProgress: (Long) -> Unit
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, "application/zip")
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-            }
-            val resolver = appContext.contentResolver
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: error("无法在 Download 目录创建文件")
-            resolver.openOutputStream(uri)?.use { out ->
-                copyTo(input, out, onProgress)
-            } ?: error("无法打开输出流")
-        } else {
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!dir.exists()) dir.mkdirs()
-            val file = File(dir, fileName)
-            FileOutputStream(file).use { out ->
-                copyTo(input, out, onProgress)
+    ): String {
+        ZipInputStream(input).use { zis ->
+            var entry = zis.nextEntry
+            var written = 0L
+            while (entry != null) {
+                if (!entry.isDirectory && entry.name.endsWith(".apk", ignoreCase = true)) {
+                    val fileName = entry.name.substringAfterLast('/')
+                    val outFile = File(dir, fileName)
+                    FileOutputStream(outFile).use { out ->
+                        val buf = ByteArray(8192)
+                        while (true) {
+                            val n = zis.read(buf)
+                            if (n <= 0) break
+                            out.write(buf, 0, n)
+                            written += n
+                            onProgress(written)
+                        }
+                        out.flush()
+                    }
+                    return outFile.absolutePath
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
             }
         }
+        error("该 artifact 里没有 .apk 文件")
     }
 
-    private fun copyTo(input: InputStream, out: java.io.OutputStream, onProgress: (Long) -> Unit) {
-        val buf = ByteArray(8192)
-        var done = 0L
-        while (true) {
-            val n = input.read(buf)
-            if (n <= 0) break
-            out.write(buf, 0, n)
-            done += n
-            onProgress(done)
+    /**
+     * 点击已下载的 APK 触发安装。
+     * 未授予“安装未知应用”时先跳到系统授权页。
+     */
+    fun installApk(apkPath: String) {
+        val file = File(apkPath)
+        if (!file.exists()) {
+            _downloadState.value = _downloadState.value?.copy(status = "error: 安装包不存在")
+            return
         }
-        out.flush()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !appContext.packageManager.canRequestPackageInstalls()
+        ) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${appContext.packageName}")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { appContext.startActivity(intent) }
+            return
+        }
+        runCatching {
+            val uri = FileProvider.getUriForFile(
+                appContext,
+                "${appContext.packageName}.fileprovider",
+                file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            appContext.startActivity(intent)
+        }.onFailure {
+            _downloadState.value = _downloadState.value?.copy(status = "error: ${it.message}")
+        }
     }
 
     fun clearDownloadState() {
