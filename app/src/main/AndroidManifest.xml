@@ -11,6 +11,9 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
 
+    <!-- 安装下载好的 APK 需要。Android 8.0+ 属于特殊权限，需跳系统设置授权 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- 旧版本才需要的存储读权限，Android 13+ 不再声明，避免系统启动时弹授权 -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -18,18 +21,6 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-
-    <!--
-      已移除：
-        <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" ... />
-      原因：
-        1. 该权限在 Android 11+ 无法用 requestPermissions 申请，系统会持续在启动时提示用户去
-           “设置 → 所有文件访问权限”，这正是“打开应用就提示授权存储空间”的来源。
-        2. 本项目实际只需要“应用自己的目录”就能完成上传/下载/工具链解压。
-           需要写入用户可见目录时，走 Storage Access Framework（SAF）即可，无需该权限。
-      若日后确实需要，请在用户主动点击“选择下载目录”之类的按钮时，
-      用 PermissionHelper.requestAllFilesAccess() 按需跳转，绝不放在启动流程里。
-    -->
 
     <application
         android:name=".GitHubClientApp"
@@ -67,6 +58,17 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- 把已解压的 APK 通过 content:// 交给系统安装器 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
