@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 下载后解压出来的 APK 放在 app 私有外部目录，供 FileProvider 暴露给安装器 -->
+    <external-files-path name="apk" path="apk/" />
+    <external-files-path name="downloads" path="downloads/" />
+    <cache-path name="cache" path="." />
+</paths>
