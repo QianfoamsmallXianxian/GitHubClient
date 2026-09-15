@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Singleton
 import com.githubclient.app.BuildConfig
 
@@ -32,6 +33,13 @@ object NetworkModule {
         explicitNulls = false
         encodeDefaults = true
     }
+
+    /**
+     * 上次已通知登出的 token。
+     * OkHttp 的拦截器跑在 IO 线程上，并发 401 可能同时进入，
+     * 用它把「同一个 token 只触发一次 onTokenExpired」这件事做成幂等。
+     */
+    private val lastNotifiedToken = AtomicReference<String?>(null)
 
     @Provides
     @Singleton
@@ -85,6 +93,7 @@ object NetworkModule {
             // 1) 读取响应头 github-authentication-token-expiration，记录到期时间；
             // 2) 收到 401 且该请求用的就是「当前活跃 token」时，交给 SessionManager 自动登出。
             //    只在 token 匹配时登出，避免「添加其它账号 / 校验某个 token」误伤当前登录态。
+            //    并用 lastNotifiedToken 去重，避免并发 401 触发多次登出。
             .addInterceptor { chain ->
                 val request = chain.request()
                 val response = chain.proceed(request)
@@ -98,8 +107,11 @@ object NetworkModule {
                         val requestAuth = request.header("Authorization")
                         val isActiveTokenRequest =
                             !activeToken.isNullOrBlank() && requestAuth == "Bearer $activeToken"
-                        if (isActiveTokenRequest) {
-                            sessionManager.onTokenExpired()
+                        if (isActiveTokenRequest && lastNotifiedToken.get() != activeToken) {
+                            // CAS 成功的那一个线程才真正触发登出
+                            if (lastNotifiedToken.compareAndSet(lastNotifiedToken.get(), activeToken)) {
+                                sessionManager.onTokenExpired()
+                            }
                         }
                     }
                 }
