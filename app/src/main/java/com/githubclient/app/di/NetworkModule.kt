@@ -35,9 +35,14 @@ object NetworkModule {
     }
 
     /**
-     * 上次已通知登出的 token。
-     * OkHttp 的拦截器跑在 IO 线程上，并发 401 可能同时进入，
-     * 用它把「同一个 token 只触发一次 onTokenExpired」这件事做成幂等。
+     * 上一次已经触发过登出通知的 token。
+     *
+     * 用途：OkHttp 拦截器跑在 IO 线程上，并发的多个 401 可能同时进入，
+     * 用它保证「同一个失效 token 只触发一次 onTokenExpired」。
+     *
+     * 重要：必须在收到成功响应时复位为 null。
+     * 否则该 token 被用户重新登录后又失效时，去重判断会永远跳过，
+     * 表现为「token 已失效但 App 仍以为登录中」。
      */
     private val lastNotifiedToken = AtomicReference<String?>(null)
 
@@ -93,7 +98,7 @@ object NetworkModule {
             // 1) 读取响应头 github-authentication-token-expiration，记录到期时间；
             // 2) 收到 401 且该请求用的就是「当前活跃 token」时，交给 SessionManager 自动登出。
             //    只在 token 匹配时登出，避免「添加其它账号 / 校验某个 token」误伤当前登录态。
-            //    并用 lastNotifiedToken 去重，避免并发 401 触发多次登出。
+            // 3) 成功响应时清空去重标记，保证同一 token 重新登录后仍能再次触发登出。
             .addInterceptor { chain ->
                 val request = chain.request()
                 val response = chain.proceed(request)
@@ -102,14 +107,19 @@ object NetworkModule {
                         ?.let { raw -> parseGithubExpiry(raw) }
                         ?.let { epoch -> tokenManager.updateTokenExpiry(epoch) }
 
-                    if (response.code == 401) {
+                    if (response.isSuccessful) {
+                        // 当前 token 可用：清空「已通知」标记。
+                        // 少了这一步，同一 token 重新登录后再次失效就不会再登出。
+                        lastNotifiedToken.set(null)
+                    } else if (response.code == 401) {
                         val activeToken = tokenManager.getToken()
                         val requestAuth = request.header("Authorization")
                         val isActiveTokenRequest =
                             !activeToken.isNullOrBlank() && requestAuth == "Bearer $activeToken"
-                        if (isActiveTokenRequest && lastNotifiedToken.get() != activeToken) {
-                            // CAS 成功的那一个线程才真正触发登出
-                            if (lastNotifiedToken.compareAndSet(lastNotifiedToken.get(), activeToken)) {
+                        if (isActiveTokenRequest) {
+                            // 只有「上次通知的不是这个 token」时才触发，
+                            // 用 compareAndSet 保证并发 401 下只有一个线程真正登出。
+                            if (lastNotifiedToken.compareAndSet(null, activeToken)) {
                                 sessionManager.onTokenExpired()
                             }
                         }
