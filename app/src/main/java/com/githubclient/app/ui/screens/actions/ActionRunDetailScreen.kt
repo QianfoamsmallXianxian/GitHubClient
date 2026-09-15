@@ -477,7 +477,7 @@ private fun ArtifactsSection(
                             append(humanSize(a.sizeInBytes))
                             when {
                                 st == null -> {}
-                                st.status == "downloading" -> append(" · 下载中 " + st.progress + "%")
+                                st.status == "downloading" -> append(if (st.progress < 0) " · 下载中" else " · 下载中 " + st.progress + "%")
                                 st.status == "done" -> append(" · 已下载，点击安装")
                                 else -> append(" · " + st.status)
                             }
