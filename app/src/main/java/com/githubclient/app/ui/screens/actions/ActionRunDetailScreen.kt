@@ -2,6 +2,7 @@ package com.githubclient.app.ui.screens.actions
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +32,6 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -166,15 +166,15 @@ fun ActionRunDetailScreen(
                 ArtifactsSection(
                     artifacts = list,
                     downloadState = downloadState,
-                    onDownload = { a -> viewModel.downloadArtifact(owner, name, a) }
+                    onDownload = { a -> viewModel.downloadArtifact(owner, name, a) },
+                    onInstall = { path -> viewModel.installApk(path) }
                 )
             }
 
-            SectionSpacer()
-            LogSection(
-                log = log,
-                isFailed = run?.conclusion == "failure"
-            )
+            if (run?.conclusion == "failure") {
+                SectionSpacer()
+                LogSection(log = log)
+            }
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -184,6 +184,7 @@ fun ActionRunDetailScreen(
 private fun SectionSpacer() {
     HorizontalDivider(thickness = 8.dp, color = Color(0xFFF0F3F6))
 }
+
 @Composable
 private fun RunHeader(run: WorkflowRun) {
     val state = conclusionState(run.status, run.conclusion)
@@ -316,6 +317,7 @@ private fun StatColumn(label: String, value: String) {
         Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     }
 }
+
 @Composable
 private fun WorkflowRow(run: WorkflowRun) {
     Row(
@@ -430,23 +432,30 @@ private fun ProgressCard(p: BuildProgress) {
         Text(p.etaText, style = MaterialTheme.typography.bodySmall, color = MutedGray)
     }
 }
+
 @Composable
 private fun ArtifactsSection(
     artifacts: List<Artifact>,
     downloadState: DownloadState?,
-    onDownload: (Artifact) -> Unit
+    onDownload: (Artifact) -> Unit,
+    onInstall: (String) -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
         Text("Artifacts", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         artifacts.forEach { a ->
             val st = downloadState?.takeIf { it.artifactName == a.name }
+            val readyApk = st?.apkPath?.takeIf { st.status == "done" && it.isNotBlank() }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(CardBg)
+                    .then(
+                        if (readyApk != null) Modifier.clickable { onInstall(readyApk) }
+                        else Modifier
+                    )
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Icon(
@@ -469,7 +478,7 @@ private fun ArtifactsSection(
                             when {
                                 st == null -> {}
                                 st.status == "downloading" -> append(" · 下载中 " + st.progress + "%")
-                                st.status == "done" -> append(" · 已保存到 Download")
+                                st.status == "done" -> append(" · 已下载，点击安装")
                                 else -> append(" · " + st.status)
                             }
                         },
@@ -483,12 +492,16 @@ private fun ArtifactsSection(
                 }
                 IconButton(
                     onClick = { onDownload(a) },
-                    enabled = st?.status != "downloading" && st?.status != "done"
+                    enabled = st?.status != "downloading"
                 ) {
                     Icon(
                         Icons.Filled.Download,
                         contentDescription = "下载",
-                        tint = if (st?.status == "done") SuccessGreen else Color(0xFF0969DA)
+                        tint = when {
+                            st?.status == "done" -> SuccessGreen
+                            st?.status?.startsWith("error") == true -> FailRed
+                            else -> Color(0xFF0969DA)
+                        }
                     )
                 }
             }
@@ -497,36 +510,27 @@ private fun ArtifactsSection(
     }
 }
 
+/** 仅构建失败时展示；默认只列错误行，便于精准定位 */
 @Composable
-private fun LogSection(log: String?, isFailed: Boolean) {
+private fun LogSection(log: String?) {
     val clipboard = LocalClipboardManager.current
     val errorLines = remember(log) { extractErrorLines(log) }
-    var onlyErrors by remember(isFailed) { mutableStateOf(isFailed && errorLines.isNotEmpty()) }
     var copied by remember { mutableStateOf(false) }
 
-    val textToShow = if (onlyErrors) {
-        if (errorLines.isEmpty()) "未匹配到错误行，点“全部”查看完整日志"
-        else errorLines.joinToString("\n") { "L" + it.first + ": " + it.second }
+    val textToShow = if (errorLines.isEmpty()) {
+        log?.takeIf { it.isNotBlank() } ?: "暂无日志"
     } else {
-        log ?: "暂无日志"
+        errorLines.joinToString("\n") { "L" + it.first + ": " + it.second }
     }
 
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "日志",
+                "错误日志",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp, vertical = 4.dp)
             )
-            if (errorLines.isNotEmpty()) {
-                FilterChip(
-                    selected = onlyErrors,
-                    onClick = { onlyErrors = !onlyErrors },
-                    label = { Text("仅错误 " + errorLines.size, fontSize = 12.sp) }
-                )
-                Spacer(Modifier.width(8.dp))
-            }
             AssistChip(
                 onClick = {
                     clipboard.setText(AnnotatedString(textToShow))
@@ -564,6 +568,7 @@ private fun LogSection(log: String?, isFailed: Boolean) {
         }
     }
 }
+
 private fun extractErrorLines(log: String?): List<Pair<Int, String>> {
     if (log.isNullOrBlank()) return emptyList()
     val lines = log.split('\n')
