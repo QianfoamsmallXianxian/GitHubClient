@@ -34,17 +34,16 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 写操作仓库（最终修正版）。
- *
- * 关键修正点：
- *  1. deleteDirectory()：用 Git Data API 一次提交移除整棵子树，避免逐文件删。
- *  2. batchDeleteFiles() 探测目录时用 runCatching 包住 getFileSha，
- *     因为 Contents API 对目录返回 JSON 数组，反序列化会抛 SerializationException。
- *  3. deleteFile() 遇 409 自动重取 sha 重试。
- *  4. 删除路径接入 callWithRetry，403 次级限流自动退避。
- *  5. getFileSha 只把 404 当 null，其他错误向上抛；对目录（反序列化异常）也返回 null。
- *  6. 批量节流 350ms。
+ * Contents API 对一个路径的三态判定。
+ * 修复：旧实现 getFileSha 对「目录 / 不存在 / 反序列化异常」统一返回 null，
+ * 导致 batchDeleteFiles 把不存在的路径当目录删，还返回 ok。
  */
+private sealed class PathState {
+    data class File(val sha: String) : PathState()
+    object Directory : PathState()
+    object NotFound : PathState()
+}
+
 @Singleton
 class GitHubWriteRepository @Inject constructor(
     private val api: GitHubApi
@@ -58,9 +57,7 @@ class GitHubWriteRepository @Inject constructor(
     private suspend fun rateGate(minIntervalMs: Long = defaultMinIntervalMs) {
         rateMutex.withLock {
             val now = System.currentTimeMillis()
-            if (now < nextAllowedAtMs) {
-                delay(nextAllowedAtMs - now)
-            }
+            if (now < nextAllowedAtMs) delay(nextAllowedAtMs - now)
             nextAllowedAtMs = System.currentTimeMillis() + minIntervalMs
         }
     }
@@ -121,25 +118,36 @@ class GitHubWriteRepository @Inject constructor(
 
     // ==================== 读取 ====================
 
+    private suspend fun resolvePathState(
+        owner: String,
+        repo: String,
+        path: String,
+        branch: String? = null
+    ): PathState {
+        return try {
+            PathState.File(api.getFileContent(owner, repo, path, branch).sha)
+        } catch (e: HttpException) {
+            when (e.code()) {
+                404 -> PathState.NotFound
+                else -> throw IllegalStateException("[resolve:$path] HTTP ${e.code()}: ${e.readErrorBody()}", e)
+            }
+        } catch (e: SerializationException) {
+            PathState.Directory
+        }
+    }
+
     /**
-     * 404 -> null；其他 HTTP 错误 -> 抛出。
-     * 目录 -> null：Contents API 对目录返回 JSON 数组，反序列化成 RepoContent 会抛
-     * SerializationException，这里统一视为「不是文件」，交给调用方按目录处理。
+     * 兼容旧签名。404 -> null；目录 -> null；其他 HTTP 错误 -> 抛出。
+     * 需要区分三态时请用 resolvePathState（内部）。
      */
     suspend fun getFileSha(
         owner: String,
         repo: String,
         path: String,
         branch: String? = null
-    ): String? {
-        return try {
-            api.getFileContent(owner, repo, path, branch).sha
-        } catch (e: HttpException) {
-            if (e.code() == 404) null
-            else throw IllegalStateException("[getFileSha:$path] HTTP ${e.code()}: ${e.readErrorBody()}", e)
-        } catch (e: SerializationException) {
-            null
-        }
+    ): String? = when (val s = resolvePathState(owner, repo, path, branch)) {
+        is PathState.File -> s.sha
+        else -> null
     }
 
     private suspend fun resolveBranch(owner: String, repo: String, hint: String?): String {
@@ -148,7 +156,6 @@ class GitHubWriteRepository @Inject constructor(
         return if (!fromApi.isNullOrBlank()) fromApi else "main"
     }
 
-    /** 递归列出 dirPath 下的所有文件：返回 (相对路径, blob sha)。 */
     suspend fun listFilesUnder(
         owner: String,
         repo: String,
@@ -269,7 +276,8 @@ class GitHubWriteRepository @Inject constructor(
                                 api.createBlob(owner, repo, CreateBlobRequest(b64))
                             }
                             lock.withLock { items.add(TreeItem(path, "100644", "blob", blob.sha)) }
-                            onProgress?.invoke(done.incrementAndGet(), total, path)
+                            // 进度回调异常不能中断整批上传
+                            runCatching { onProgress?.invoke(done.incrementAndGet(), total, path) }
                         }
                     }.awaitAll()
                 }
@@ -312,10 +320,15 @@ class GitHubWriteRepository @Inject constructor(
         minIntervalMs: Long = defaultMinIntervalMs
     ) {
         val real = if (!sha.isNullOrBlank()) sha else {
-            getFileSha(owner, repo, path, branch)
-                ?: throw IllegalStateException(
-                    "no sha: $path（该路径不存在，或它是一个目录——目录请用 deleteDirectory()）"
+            when (val s = resolvePathState(owner, repo, path, branch)) {
+                is PathState.File -> s.sha
+                PathState.Directory -> throw IllegalStateException(
+                    "no sha: $path（该路径是目录——目录请用 deleteDirectory()）"
                 )
+                PathState.NotFound -> throw IllegalStateException(
+                    "no sha: $path（路径不存在）"
+                )
+            }
         }
         deleteFileWithSha(owner, repo, path, real, branch, minIntervalMs, allow409Retry = true)
     }
@@ -343,13 +356,21 @@ class GitHubWriteRepository @Inject constructor(
                 throw IllegalStateException("[deleteFile:$path] HTTP ${e.code()}: ${e.readErrorBody()}", e)
             }
         } catch (e: IOException) {
+            // 幂等重试：网络异常不代表服务端没执行。重试前先确认路径是否还在。
+            // 若已变成 NotFound，说明第一次其实成功了，直接当成功返回。
             rateGate(minIntervalMs)
-            try {
-                api.deleteFile(owner, repo, path, DeleteFileRequest("delete $path", sha, branch))
-            } catch (e2: HttpException) {
-                throw IllegalStateException(
-                    "[deleteFile:$path] 重试后 HTTP ${e2.code()}: ${e2.readErrorBody()}", e2
-                )
+            when (resolvePathState(owner, repo, path, branch)) {
+                PathState.NotFound -> return
+                else -> {
+                    try {
+                        api.deleteFile(owner, repo, path, DeleteFileRequest("delete $path", sha, branch))
+                    } catch (e2: HttpException) {
+                        if (e2.code() == 404) return
+                        throw IllegalStateException(
+                            "[deleteFile:$path] 重试后 HTTP ${e2.code()}: ${e2.readErrorBody()}", e2
+                        )
+                    }
+                }
             }
         }
     }
@@ -357,7 +378,7 @@ class GitHubWriteRepository @Inject constructor(
     /**
      * 删除整个目录。
      *  快路径：Git Data API 一次提交移除子树。
-     *  退路：递归枚举 + 逐文件删。
+     *  退路：递归枚举 + 逐文件删（仅在快路径失败时使用，并记录失败原因）。
      */
     suspend fun deleteDirectory(
         owner: String,
@@ -378,10 +399,11 @@ class GitHubWriteRepository @Inject constructor(
         val prefix = "$clean/"
         val files = listing.tree.filter { it.type == "blob" && it.path.startsWith(prefix) }
         if (files.isEmpty()) {
-            onProgress?.invoke(0, 0, clean)
+            runCatching { onProgress?.invoke(0, 0, clean) }
             return@withContext 0
         }
 
+        var fastPathError: Throwable? = null
         val fastPath = runCatching {
             val treeBody = buildJsonObject {
                 put("base_tree", baseTree)
@@ -417,9 +439,10 @@ class GitHubWriteRepository @Inject constructor(
             }
             files.size
         }
+        fastPath.exceptionOrNull()?.let { fastPathError = it }
 
         if (fastPath.isSuccess) {
-            onProgress?.invoke(files.size, files.size, clean)
+            runCatching { onProgress?.invoke(files.size, files.size, clean) }
             return@withContext files.size
         }
 
@@ -432,11 +455,13 @@ class GitHubWriteRepository @Inject constructor(
                 deleteFile(owner, repo, f.path, f.sha, br, batchMinIntervalMs)
             }
             if (r.isSuccess) ok++ else errors.add("${f.path}: ${r.exceptionOrNull()?.message}")
-            onProgress?.invoke(i, files.size, f.path)
+            runCatching { onProgress?.invoke(i, files.size, f.path) }
         }
         if (errors.isNotEmpty()) {
+            val cause = fastPathError?.message ?: "未知"
             throw IllegalStateException(
-                "deleteDirectory 部分失败（成功 $ok/${files.size}）：\n" + errors.take(10).joinToString("\n")
+                "deleteDirectory 部分失败（成功 $ok/${files.size}，快路径失败原因：$cause）：\n" +
+                    errors.take(10).joinToString("\n")
             )
         }
         ok
@@ -444,8 +469,7 @@ class GitHubWriteRepository @Inject constructor(
 
     /**
      * 批量删除。文件/目录混合输入。
-     * 目录探测用 runCatching 包住 getFileSha：
-     * Contents API 对目录返回数组，反序列化会抛 SerializationException。
+     * 三态判断，不再把「不存在的路径」误判成目录。
      */
     suspend fun batchDeleteFiles(
         owner: String,
@@ -460,17 +484,21 @@ class GitHubWriteRepository @Inject constructor(
         for (p in paths) {
             done++
             val r = runCatching {
-                val sha = runCatching { getFileSha(owner, repo, p, br) }.getOrNull()
-                if (sha != null) {
-                    deleteFile(owner, repo, p, sha, br, batchMinIntervalMs)
-                    1
-                } else {
-                    deleteDirectory(owner, repo, p, null, br, null)
+                when (val st = resolvePathState(owner, repo, p, br)) {
+                    is PathState.File -> {
+                        deleteFile(owner, repo, p, st.sha, br, batchMinIntervalMs)
+                    }
+                    PathState.Directory -> {
+                        deleteDirectory(owner, repo, p, null, br, null)
+                    }
+                    PathState.NotFound -> {
+                        throw IllegalStateException("路径不存在，跳过")
+                    }
                 }
             }
             r.onSuccess { res.add("$p: ok") }
                 .onFailure { res.add("$p: ${it.message}") }
-            onProgress?.invoke(done, paths.size, p)
+            runCatching { onProgress?.invoke(done, paths.size, p) }
         }
         res
     }
