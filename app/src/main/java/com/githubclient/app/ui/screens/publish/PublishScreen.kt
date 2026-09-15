@@ -2,25 +2,35 @@ package com.githubclient.app.ui.screens.publish
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -33,11 +43,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.githubclient.app.automation.PublishState
+
+private val SuccessGreen = Color(0xFF1F883D)
+private val FailRed = Color(0xFFCF222E)
+private val InfoBlue = Color(0xFF0969DA)
+private val SuccessBg = Color(0xFFDAFBE1)
+private val FailBg = Color(0xFFFFEBE9)
+private val InfoBg = Color(0xFFDDF4FF)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,6 +131,8 @@ fun PublishScreen(
                 Text(if (running) "正在上传..." else "开始上传并构建")
             }
 
+            StatusBanner(state, running)
+
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -144,6 +165,60 @@ fun PublishScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * 状态条：把 PublishState 的 message 显示出来。
+ * 之前 state 只被用来算 running 布尔值，Success/Error 的文案全被丢掉，
+ * 导致上传成功或失败在界面上都看不出来。
+ */
+@Composable
+private fun StatusBanner(state: PublishState, running: Boolean) {
+    val (bg, fg, text) = when (state) {
+        is PublishState.Running -> Triple(InfoBg, InfoBlue, "正在上传，请勿退出页面...")
+        is PublishState.Success -> Triple(SuccessBg, SuccessGreen, state.message)
+        is PublishState.Error -> Triple(FailBg, FailRed, state.message)
+        PublishState.Idle -> return
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bg,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (running) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = fg
+                )
+            } else {
+                Icon(
+                    imageVector = when (state) {
+                        is PublishState.Success -> Icons.Filled.CheckCircle
+                        is PublishState.Error -> Icons.Filled.Error
+                        else -> Icons.Filled.Info
+                    },
+                    contentDescription = null,
+                    tint = fg,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = text,
+                color = fg,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
