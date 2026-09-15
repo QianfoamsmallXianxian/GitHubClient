@@ -10,7 +10,10 @@ import com.githubclient.app.data.repository.GitHubRepository
 import com.githubclient.app.data.repository.GitHubWriteRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -26,8 +29,20 @@ class RepoViewModel @Inject constructor(
     private val _contents = MutableStateFlow<List<RepoContent>>(emptyList())
     val contents: StateFlow<List<RepoContent>> = _contents
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
+    /**
+     * 修复：原先 loadRepo 与 loadContents 共用同一个 _isLoading，
+     * 并发时先结束的那一个会把 loading 提前关掉。现在拆成两个独立标志，
+     * 另外保留 isLoading 作为二者之和，兼容既有 UI 调用方。
+     */
+    private val _isRepoLoading = MutableStateFlow(false)
+    val isRepoLoading: StateFlow<Boolean> = _isRepoLoading
+
+    private val _isContentsLoading = MutableStateFlow(false)
+    val isContentsLoading: StateFlow<Boolean> = _isContentsLoading
+
+    val isLoading: StateFlow<Boolean> =
+        combine(_isRepoLoading, _isContentsLoading) { a, b -> a || b }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _fileContent = MutableStateFlow<String?>(null)
     val fileContent: StateFlow<String?> = _fileContent
@@ -207,7 +222,7 @@ class RepoViewModel @Inject constructor(
 
     fun loadRepo(owner: String, name: String) {
         viewModelScope.launch {
-            _isLoading.value = true
+            _isRepoLoading.value = true
             try {
                 _repo.value = repository.getRepo(owner, name)
                 runCatching {
@@ -217,7 +232,7 @@ class RepoViewModel @Inject constructor(
             } catch (e: Exception) {
                 _repo.value = null
             } finally {
-                _isLoading.value = false
+                _isRepoLoading.value = false
             }
         }
     }
@@ -227,7 +242,7 @@ class RepoViewModel @Inject constructor(
         currentName = name
         currentPath = path
         viewModelScope.launch {
-            _isLoading.value = true
+            _isContentsLoading.value = true
             try {
                 val list = repository.getContents(owner, name, path)
                 allContents = list
@@ -236,7 +251,7 @@ class RepoViewModel @Inject constructor(
                 allContents = emptyList()
                 _contents.value = emptyList()
             } finally {
-                _isLoading.value = false
+                _isContentsLoading.value = false
             }
         }
     }
