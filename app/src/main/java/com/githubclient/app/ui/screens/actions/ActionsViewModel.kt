@@ -22,6 +22,10 @@ class ActionsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    /** 下拉刷新专用：与首次加载区分，避免整页被 LoadingState 顶掉 */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing
+
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message
 
@@ -40,6 +44,27 @@ class ActionsViewModel @Inject constructor(
                 _message.value = e.message ?: "加载失败"
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * 下拉刷新。
+     * 与 load() 的区别：
+     *  - 不翻转 isLoading，因此列表不会被 LoadingState 替换掉；
+     *  - 只驱动 PullToRefreshBox 的转圈；
+     *  - 成功后清掉上一次的错误提示，避免旧消息一直挂着。
+     */
+    fun refresh(owner: String, name: String) {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                _runs.value = repository.getWorkflowRuns(owner, name).workflowRuns
+                _message.value = null
+            } catch (e: Exception) {
+                _message.value = e.message ?: "刷新失败"
+            } finally {
+                _isRefreshing.value = false
             }
         }
     }
