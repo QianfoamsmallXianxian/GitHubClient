@@ -1,9 +1,12 @@
 package com.githubclient.app.ui.screens.actions
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,18 +14,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -31,6 +36,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -59,6 +66,7 @@ fun ActionsScreen(
 ) {
     val runs by viewModel.runs.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val message by viewModel.message.collectAsState()
     val selectedIds by viewModel.selectedIds.collectAsState()
     val isDeleting by viewModel.isDeleting.collectAsState()
@@ -87,6 +95,10 @@ fun ActionsScreen(
                             viewModel.clearSelection()
                         }) { Icon(Icons.Default.Close, contentDescription = "取消选择") }
                     } else {
+                        IconButton(
+                            onClick = { viewModel.refresh(owner, name) },
+                            enabled = !isRefreshing
+                        ) { Icon(Icons.Default.Refresh, contentDescription = "刷新") }
                         Button(onClick = onOpenDispatch, modifier = Modifier.padding(end = 8.dp)) { Text("手动触发") }
                     }
                 }
@@ -127,29 +139,35 @@ fun ActionsScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
             }
-            when {
-                isLoading && runs.isEmpty() -> LoadingState()
-                runs.isEmpty() -> EmptyState("暂无 Workflow Runs")
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(runs, key = { it.id }) { run ->
-                        RunCard(
-                            run = run,
-                            selectionMode = selectionMode,
-                            selected = selectedIds.contains(run.id),
-                            onOpen = { onOpenRun(run.id) },
-                            onLongClick = {
-                                // 长按进入选择模式，仅选中当前项（不自动全选）
-                                selectionMode = true
-                                if (!selectedIds.contains(run.id)) viewModel.toggleSelect(run.id)
-                            },
-                            onToggleSelect = { viewModel.toggleSelect(run.id) },
-                            onCancel = { viewModel.cancelRun(owner, name, run.id) },
-                            onRerun = { viewModel.rerunRun(owner, name, run.id) }
-                        )
+
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.refresh(owner, name) },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                when {
+                    isLoading && runs.isEmpty() -> LoadingState()
+                    runs.isEmpty() -> EmptyState("暂无 Workflow Runs")
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(runs, key = { it.id }) { run ->
+                            RunCard(
+                                run = run,
+                                selectionMode = selectionMode,
+                                selected = selectedIds.contains(run.id),
+                                onOpen = { onOpenRun(run.id) },
+                                onLongClick = {
+                                    selectionMode = true
+                                    if (!selectedIds.contains(run.id)) viewModel.toggleSelect(run.id)
+                                },
+                                onToggleSelect = { viewModel.toggleSelect(run.id) },
+                                onCancel = { viewModel.cancelRun(owner, name, run.id) },
+                                onRerun = { viewModel.rerunRun(owner, name, run.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -205,12 +223,38 @@ private fun RunCard(
     }
 }
 
+/**
+ * 状态指示：
+ *  - in_progress -> 蓝色圆圈，转（工作中）
+ *  - queued / requested / waiting -> 灰色圆圈，不转（在排队等待）
+ *  - 成功 / 失败 -> 对勾 / 叉
+ *  - 其他 -> 时钟图标
+ */
 @Composable
 private fun StatusIcon(run: WorkflowRun) {
     when {
-        run.status == "completed" && run.conclusion == "success" -> Icon(Icons.Default.CheckCircle, contentDescription = "成功", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
-        run.status == "completed" && run.conclusion == "failure" -> Icon(Icons.Default.Error, contentDescription = "失败", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
-        run.status == "in_progress" || run.status == "queued" -> Icon(Icons.Default.PlayArrow, contentDescription = "进行中", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-        else -> Icon(Icons.Default.Schedule, contentDescription = "等待", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        run.status == "completed" && run.conclusion == "success" ->
+            Icon(Icons.Default.CheckCircle, contentDescription = "成功", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+
+        run.status == "completed" && run.conclusion == "failure" ->
+            Icon(Icons.Default.Error, contentDescription = "失败", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(24.dp))
+
+        run.status == "in_progress" ->
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                strokeWidth = 2.5.dp,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+        run.status == "queued" || run.status == "requested" || run.status == "waiting" ->
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f))
+            )
+
+        else ->
+            Icon(Icons.Default.Schedule, contentDescription = "等待", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
     }
 }
