@@ -47,6 +47,15 @@ class LocalProjectScanner @Inject constructor(
         ".DS_Store", "Thumbs.db", "local.properties"
     )
 
+    /**
+     * 按相对路径整段忽略的目录。
+     * ignoredDirectories 只比对单级目录名，匹配不了 Data/Sys/GameSettings 这种多级路径，
+     * 所以这里用相对路径前缀判断，避免把上千个模拟器运行时配置当源码上传。
+     */
+    private val ignoredRelativePaths = setOf(
+        "Data/Sys/GameSettings"
+    )
+
     private val binaryExtensions = setOf(
         "png", "jpg", "jpeg", "gif", "ico", "apk", "aab", "jar",
         "so", "bin", "exe", "dll", "zip", "tar", "gz", "xz",
@@ -121,7 +130,7 @@ class LocalProjectScanner @Inject constructor(
                     if (relativePrefix.isEmpty()) file.name else "$relativePrefix/${file.name}"
                 when {
                     file.isDirectory -> {
-                        if (file.name !in ignoredDirectories) {
+                        if (file.name !in ignoredDirectories && ignoredRelativePaths.none { relativePath == it || relativePath.startsWith("$it/") }) {
                             scan(file, relativePath)
                         }
                     }
