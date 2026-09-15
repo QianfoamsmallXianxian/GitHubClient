@@ -4,4 +4,6 @@
     <external-files-path name="apk" path="apk/" />
     <external-files-path name="downloads" path="downloads/" />
     <cache-path name="cache" path="." />
+    <!-- 外部存储不可用时 getExternalFilesDir(null) 返回 null，兜底落到内部 filesDir/apk -->
+    <files-path name="apk_internal" path="apk/" />
 </paths>
