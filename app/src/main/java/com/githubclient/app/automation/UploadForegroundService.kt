@@ -8,21 +8,29 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.githubclient.app.MainActivity
 
 /**
  * 上传任务的前台服务。
  *
- * 作用：挂上前台服务后，系统会保留进程，切后台 / 熄屏时上传不会被回收。
+ * 作用：
+ *  1) 挂上前台服务后，系统会保留进程，切后台 / 熄屏时上传不会被回收；
+ *  2) 持有 PARTIAL_WAKE_LOCK，熄屏后 CPU 不被挂起；
+ *  3) 持有 WIFI_MODE_FULL_HIGH_PERF，熄屏后 Wi-Fi 不被切到省电模式。
  *
  * 注意：前台服务只是「保活增强」，不是上传的必要条件。
  * 因此这里所有系统调用都做了兜底，任何一步失败都不会让 App 崩溃——
- * 最坏情况只是没有常驻通知，上传本身照常进行。
+ * 最坏情况只是没有常驻通知 / 没有唤醒锁，上传本身照常进行。
  */
 class UploadForegroundService : Service() {
+
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -36,6 +44,8 @@ class UploadForegroundService : Service() {
             val title = intent?.getStringExtra(EXTRA_TITLE) ?: "正在上传"
             val progress = intent?.getIntExtra(EXTRA_PROGRESS, 0) ?: 0
             val max = intent?.getIntExtra(EXTRA_MAX, 0) ?: 0
+
+            acquireLocks()
 
             val notification = buildNotification(title, progress, max)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -53,6 +63,56 @@ class UploadForegroundService : Service() {
             runCatching { stopSelf() }
         }
         return START_NOT_STICKY
+    }
+
+    /**
+     * 申请唤醒锁。全部 runCatching 兜底：
+     *  - 没有 WAKE_LOCK 权限 -> 跳过，不影响上传；
+     *  - 部分厂商 ROM 限制 Wi-Fi 锁 -> 跳过，不影响上传。
+     * 引用计数用 acquire()（无超时）配合 onDestroy 的 release()，
+     * 否则超时后锁会自动释放，熄屏仍会被挂起。
+     */
+    private fun acquireLocks() {
+        if (wakeLock == null) {
+            runCatching {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                wakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "GitHubClient:upload"
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        }
+        if (wifiLock == null) {
+            runCatching {
+                val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                wifiLock = wm.createWifiLock(
+                    WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                    "GitHubClient:upload-wifi"
+                ).apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            }
+        }
+    }
+
+    private fun releaseLocks() {
+        runCatching {
+            wakeLock?.takeIf { it.isHeld }?.release()
+        }
+        runCatching {
+            wifiLock?.takeIf { it.isHeld }?.release()
+        }
+        wakeLock = null
+        wifiLock = null
+    }
+
+    override fun onDestroy() {
+        releaseLocks()
+        super.onDestroy()
     }
 
     private fun buildNotification(title: String, progress: Int, max: Int): Notification {
