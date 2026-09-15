@@ -90,7 +90,7 @@ class GitHubWriteRepository @Inject constructor(
 
     private suspend fun <T> callWithRetry(
         step: String,
-        maxAttempts: Int = 5,
+        maxAttempts: Int = 8,
         block: suspend () -> T
     ): T {
         var last: Throwable? = null
@@ -100,7 +100,7 @@ class GitHubWriteRepository @Inject constructor(
             } catch (e: Throwable) {
                 last = e
                 if (!e.isRetryable() || i == maxAttempts - 1) throw e
-                val backoff = if (e.isRateLimit()) 30_000L * (i + 1) else 2_000L * (i + 1)
+                val backoff = if (e.isRateLimit()) 30_000L * (i + 1) else (2_000L shl i).coerceAtMost(30_000L)
                 delay(backoff)
             }
         }
@@ -246,6 +246,24 @@ class GitHubWriteRepository @Inject constructor(
 
         val br = resolveBranch(owner, repo, branch)
 
+        // ===== 断点续传：先拉远端已有文件，跳过已上传的 =====
+        // 首次上传中途断开后，重跑只补缺失文件，不再从头重传。
+        val existingPaths: Set<String> = runCatching {
+            val headSha = api.getRef(owner, repo, br).target.sha
+            val baseTree = api.getCommitDetail(owner, repo, headSha).tree.sha
+            api.getTreeRecursive(owner, repo, baseTree, 1).tree
+                .filter { it.type == "blob" }
+                .map { it.path }
+                .toSet()
+        }.getOrDefault(emptySet())
+
+        val pendingFiles: Map<String, String> =
+            if (existingPaths.isEmpty()) files
+            else files.filterKeys { it !in existingPaths }
+
+        if (pendingFiles.isEmpty()) return@withContext files.size
+
+
         val existingRef = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
         if (existingRef == null) {
             val seed = Base64.encodeToString(
@@ -260,9 +278,9 @@ class GitHubWriteRepository @Inject constructor(
             }
         }
 
-        val total = files.size
+        val total = pendingFiles.size
         val done = AtomicInteger(0)
-        val chunks = files.entries.toList().chunked(chunkSize)
+        val chunks = pendingFiles.entries.toList().chunked(chunkSize)
         chunks.forEachIndexed { idx, chunk ->
             val items = mutableListOf<TreeItem>()
             val lock = Mutex()
