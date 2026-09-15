@@ -8,6 +8,7 @@ import com.githubclient.app.di.ApplicationScope
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -93,17 +94,31 @@ class PublishManager @Inject constructor(
             }
             log("待上传文件: ${files.size} 个")
 
-            val uploaded = writeRepository.uploadAllFiles(
-                owner = owner,
-                repo = name,
-                files = files,
-                message = "publish source",
-                branch = null
-            ) { done, total, path ->
-                if (done == total || done % 20 == 0) log("上传 $done/$total  $path")
-                UploadForegroundService.update(appContext, "上传 " + done + "/" + total, done, total)
+            var attempt = 0
+            val maxAttempts = 20
+            var uploaded = 0
+            while (true) {
+                attempt++
+                try {
+                    uploaded = writeRepository.uploadAllFiles(
+                        owner = owner,
+                        repo = name,
+                        files = files,
+                        message = "publish source",
+                        branch = null
+                    ) { done, total, path ->
+                        if (done == total || done % 20 == 0) log("上传 " + done + "/" + total + "  " + path)
+                        UploadForegroundService.update(appContext, "上传 " + done + "/" + total, done, total)
+                    }
+                    break
+                } catch (e: Exception) {
+                    if (attempt >= maxAttempts) throw e
+                    val waitMs = (attempt * 5000L).coerceAtMost(60000L)
+                    log("第 " + attempt + " 次中断：" + (e.message ?: "未知") + "，" + (waitMs/1000) + " 秒后自动续传...")
+                    delay(waitMs)
+                }
             }
-            log("上传完成: $uploaded 个文件")
+            log("上传完成: " + uploaded + " 个文件")
             log("已推送到默认分支，监听 push 的 Actions 会自动构建")
 
             if (triggerDispatch) {
