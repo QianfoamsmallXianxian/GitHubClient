@@ -246,22 +246,54 @@ class GitHubWriteRepository @Inject constructor(
 
         val br = resolveBranch(owner, repo, branch)
 
+
         // ===== 断点续传：先拉远端已有文件，跳过已上传的 =====
         // 首次上传中途断开后，重跑只补缺失文件，不再从头重传。
-        val existingPaths: Set<String> = runCatching {
+        //
+        // 关键：这里必须区分两种情况，不能无脑兜底成空集。
+        //   A. 仓库/分支还不存在（404）→ 确实是首次上传，existing 为空正常；
+        //   B. 断网 / 令牌失效 / 限流 / 5xx → 若兜底成空集，
+        //      会把已传上去的几千个文件全部重传一遍，正好违背“断点续传”本意。
+        // 所以 B 情况要向上抛，让上层显示真实原因；
+        // 恢复网络或重新登录后，再点一次上传即可从断点继续。
+        val existingPaths: Set<String> = try {
             val headSha = api.getRef(owner, repo, br).target.sha
             val baseTree = api.getCommitDetail(owner, repo, headSha).tree.sha
             api.getTreeRecursive(owner, repo, baseTree, 1).tree
                 .filter { it.type == "blob" }
                 .map { it.path }
                 .toSet()
-        }.getOrDefault(emptySet())
+        } catch (e: HttpException) {
+            if (e.code() == 404) {
+                emptySet()
+            } else {
+                throw IllegalStateException(
+                    "[resume] 读取远端已有文件失败 HTTP ${e.code()}：" +
+                        "恢复网络或重新登录后重试，已上传部分不会重传",
+                    e
+                )
+            }
+        } catch (e: java.io.IOException) {
+            throw IllegalStateException(
+                "[resume] 读取远端已有文件失败（网络中断）：" +
+                    "恢复网络后重试，已上传部分不会重传",
+                e
+            )
+        }
 
         val pendingFiles: Map<String, String> =
             if (existingPaths.isEmpty()) files
             else files.filterKeys { it !in existingPaths }
 
-        if (pendingFiles.isEmpty()) return@withContext files.size
+        if (pendingFiles.isEmpty()) {
+            runCatching { onProgress?.invoke(files.size, files.size, "全部文件已存在，无需上传") }
+            return@withContext files.size
+        }
+
+        val skippedCount = files.size - pendingFiles.size
+        if (skippedCount > 0) {
+            runCatching { onProgress?.invoke(0, pendingFiles.size, "断点续传：已跳过 $skippedCount 个已上传文件") }
+        }
 
 
         val existingRef = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
