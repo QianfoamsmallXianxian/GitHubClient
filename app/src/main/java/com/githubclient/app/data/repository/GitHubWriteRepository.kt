@@ -246,39 +246,65 @@ class GitHubWriteRepository @Inject constructor(
 
         val br = resolveBranch(owner, repo, branch)
 
-
-        // ===== 断点续传：先拉远端已有文件，跳过已上传的 =====
-        // 首次上传中途断开后，重跑只补缺失文件，不再从头重传。
+        // ===== 断点续传 =====
+        // 先拉远端已有文件，跳过已上传的。重跑只补缺失文件，不再从头重传。
         //
-        // 关键：这里必须区分两种情况，不能无脑兜底成空集。
-        //   A. 仓库/分支还不存在（404）→ 确实是首次上传，existing 为空正常；
-        //   B. 断网 / 令牌失效 / 限流 / 5xx → 若兜底成空集，
-        //      会把已传上去的几千个文件全部重传一遍，正好违背“断点续传”本意。
-        // 所以 B 情况要向上抛，让上层显示真实原因；
+        // 失败必须区分两类，不能无脑兜底成空集：
+        //   A. 404（分支/仓库还不存在）-> 确实是首次上传，空集正确；
+        //   B. 断网 / 令牌失效 / 限流 / 5xx -> 若兜底成空集，
+        //      会把已传上去的几千个文件全部重传一遍，正好违背续传本意。
+        // 所以 B 情况向上抛，让上层显示真实原因；
         // 恢复网络或重新登录后，再点一次上传即可从断点继续。
-        val existingPaths: Set<String> = try {
-            val headSha = api.getRef(owner, repo, br).target.sha
-            val baseTree = api.getCommitDetail(owner, repo, headSha).tree.sha
-            api.getTreeRecursive(owner, repo, baseTree, 1).tree
-                .filter { it.type == "blob" }
-                .map { it.path }
-                .toSet()
+        //
+        // 另外 GitHub 的 recursive tree 接口在仓库过大时返回 truncated=true，
+        // 只给一部分文件。此时 existingPaths 不完整，拿去当「已上传清单」
+        // 会导致漏判和重复上传，因此直接报错。
+        val remoteHeadSha: String? = try {
+            api.getRef(owner, repo, br).target.sha
         } catch (e: HttpException) {
-            if (e.code() == 404) {
-                emptySet()
-            } else {
-                throw IllegalStateException(
-                    "[resume] 读取远端已有文件失败 HTTP ${e.code()}：" +
-                        "恢复网络或重新登录后重试，已上传部分不会重传",
-                    e
-                )
-            }
-        } catch (e: java.io.IOException) {
+            if (e.code() == 404) null
+            else throw IllegalStateException(
+                "[resume] 读取远端分支失败 HTTP ${e.code()}：" +
+                    "恢复网络或重新登录后重试，已上传部分不会重传",
+                e
+            )
+        } catch (e: IOException) {
             throw IllegalStateException(
-                "[resume] 读取远端已有文件失败（网络中断）：" +
+                "[resume] 读取远端分支失败（网络中断）：" +
                     "恢复网络后重试，已上传部分不会重传",
                 e
             )
+        }
+
+        val existingPaths: Set<String> = if (remoteHeadSha == null) {
+            emptySet()
+        } else {
+            try {
+                val baseTree = api.getCommitDetail(owner, repo, remoteHeadSha).tree.sha
+                val listing = api.getTreeRecursive(owner, repo, baseTree, 1)
+                if (listing.truncated) {
+                    throw IllegalStateException(
+                        "[resume] 远端文件树过大，GitHub 返回被截断，无法可靠判断哪些文件已上传。" +
+                            "请先减少待上传文件数（例如排除运行时配置目录）后重试"
+                    )
+                }
+                listing.tree
+                    .filter { it.type == "blob" }
+                    .map { it.path }
+                    .toSet()
+            } catch (e: HttpException) {
+                throw IllegalStateException(
+                    "[resume] 读取远端文件树失败 HTTP ${e.code()}：" +
+                        "恢复网络或重新登录后重试，已上传部分不会重传",
+                    e
+                )
+            } catch (e: IOException) {
+                throw IllegalStateException(
+                    "[resume] 读取远端文件树失败（网络中断）：" +
+                        "恢复网络后重试，已上传部分不会重传",
+                    e
+                )
+            }
         }
 
         val pendingFiles: Map<String, String> =
@@ -290,14 +316,20 @@ class GitHubWriteRepository @Inject constructor(
             return@withContext files.size
         }
 
+        // 只按路径判断是否已上传，不比对内容。
+        // 若某文件本地改过内容但远端已有同路径旧版，会被跳过、不会重传。
         val skippedCount = files.size - pendingFiles.size
         if (skippedCount > 0) {
-            runCatching { onProgress?.invoke(0, pendingFiles.size, "断点续传：已跳过 $skippedCount 个已上传文件") }
+            runCatching {
+                onProgress?.invoke(
+                    0, pendingFiles.size,
+                    "断点续传：已跳过 $skippedCount 个已上传文件（仅按路径判断）"
+                )
+            }
         }
 
-
-        val existingRef = runCatching { api.getRef(owner, repo, br).target.sha }.getOrNull()
-        if (existingRef == null) {
+        if (remoteHeadSha == null) {
+            // 分支还不存在 -> 用一次 updateFile 建出默认分支和初始提交
             val seed = Base64.encodeToString(
                 "# $repo\n\n由 GitHubClient 初始化。\n".toByteArray(),
                 Base64.NO_WRAP
@@ -346,8 +378,10 @@ class GitHubWriteRepository @Inject constructor(
                     CreateCommitRequest(commitMsg, tree.sha, if (parent != null) listOf(parent) else emptyList())
                 )
             }
+            // updateRef 不能盲目重试：commit.sha 是定值，ref 一旦被别处推进，
+            // 用同一个旧 base 重试每次都会 422，白等两分钟。失败直接抛。
             if (parent != null) {
-                callWithRetry("updateRef#$idx") {
+                call("updateRef#$idx") {
                     api.updateRef(owner, repo, br, UpdateRefRequest(commit.sha, false))
                 }
             } else {
