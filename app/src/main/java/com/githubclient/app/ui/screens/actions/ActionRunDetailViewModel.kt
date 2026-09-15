@@ -206,7 +206,7 @@ class ActionRunDetailViewModel @Inject constructor(
                         val total = body.contentLength()
                         val dir = File(appContext.getExternalFilesDir(null), "apk").apply { mkdirs() }
                         extractApkFromZip(body.byteStream(), dir, total) { done ->
-                            val p = if (total > 0) (done * 100 / total).toInt() else 0
+                            val p = if (total > 0) (done * 100 / total).toInt() else -1
                             _downloadState.value = DownloadState(artifact.name, p, "downloading")
                         }
                     }
